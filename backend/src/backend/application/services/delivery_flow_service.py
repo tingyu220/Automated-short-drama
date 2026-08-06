@@ -33,12 +33,15 @@ class DeliveryFlowService:
         asset: DramaAsset,
         link_type: str,
         link: str,
+        platform: str,
     ) -> str:
         """创建缺失的推广内容配置并返回配置 ID。"""
         return self._delivery.ensure_promotion_config(
             asset.delivery_drama_id,
             link_type,
             link,
+            asset.drama_name,
+            platform,
         )
 
     def create_product(self, album_id: str, fields: dict[str, Any]) -> str:

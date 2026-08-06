@@ -17,7 +17,7 @@ class TaskStatusPage:
         self._selectors = selectors
 
     def poll(self, external_task_id: str) -> str:
-        """读取任务行状态：已完成/部分失败/失败/其他（保留原文）."""
+        """读取任务行状态并归一化：已完成/部分失败/失败/其他."""
         selector = (
             f"{self._selectors['task_row']}:has-text('{external_task_id}') "
             f"{self._selectors['task_status_cell']}"
@@ -35,4 +35,4 @@ class TaskStatusPage:
             return "PARTIAL_FAILED"
         if "失败" in raw or "FAILED" in upper:
             return "FAILED"
-        return raw
+        return "OTHER"

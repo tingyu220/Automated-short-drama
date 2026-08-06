@@ -97,7 +97,7 @@ class DryRunWorkflow:
         if asset is None:
             return result
 
-        if not self._ensure_configs_or_fail(result, asset, links):
+        if not self._ensure_configs_or_fail(result, asset, links, task.platform):
             return result
 
         product_id = self._create_product_or_fail(result, asset, task.drama_name)
@@ -232,12 +232,13 @@ class DryRunWorkflow:
         result: DryRunResult,
         asset: DramaAsset,
         links: dict[str, str],
+        platform: str,
     ) -> bool:
         try:
             for link_type in _LINK_TYPES:
                 if link_type in links:
                     self._delivery_flow.ensure_promotion_config(
-                        asset, link_type, links[link_type]
+                        asset, link_type, links[link_type], platform
                     )
         except Exception as exc:
             result.steps.append(

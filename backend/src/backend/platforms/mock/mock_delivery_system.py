@@ -32,9 +32,16 @@ class MockDeliverySystemAdapter(DeliverySystemAdapter):
         self._assets[key] = asset
         return asset
 
-    def ensure_promotion_config(self, asset_id: str, link_type: str, link: str) -> str:
-        del link  # Mock 无需真实配置内容
-        return f"cfg-{asset_id}-{link_type}"
+    def ensure_promotion_config(
+        self,
+        asset_id: str,
+        link_type: str,
+        link: str,
+        drama_name: str,
+        platform: str,
+    ) -> str:
+        del asset_id, link  # Mock 无需真实资源/链接内容
+        return f"{link_type}-{platform}-{drama_name}"
 
     def submit_plan(self, plan_spec: Any) -> str:
         return f"task-{self._digest(plan_spec)}"

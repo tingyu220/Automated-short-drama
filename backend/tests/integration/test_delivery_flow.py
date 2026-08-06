@@ -38,11 +38,13 @@ class TestDeliveryFlowIntegration:
                 assert service.ensure_drama_asset("剧A", links["IAA"]) == asset
 
                 config_ids = {
-                    link_type: service.ensure_promotion_config(asset, link_type, link)
+                    link_type: service.ensure_promotion_config(
+                        asset, link_type, link, "TOMATO"
+                    )
                     for link_type, link in links.items()
                 }
                 assert config_ids == {
-                    link_type: f"cfg-{asset.delivery_drama_id}-{link_type}"
+                    link_type: f"{link_type}-TOMATO-剧A"
                     for link_type in links
                 }
 

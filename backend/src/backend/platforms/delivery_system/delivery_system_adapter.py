@@ -68,14 +68,23 @@ class DeliverySystemAdapter(DeliverySystemAdapterProtocol):
             drama_name, link
         )
 
-    def ensure_promotion_config(self, asset_id: str, link_type: str, link: str) -> str:
+    def ensure_promotion_config(
+        self,
+        asset_id: str,
+        link_type: str,
+        link: str,
+        drama_name: str,
+        platform: str,
+    ) -> str:
         """创建缺失的推广内容配置并返回配置标识."""
-        self._record("ensure_promotion_config", asset_id, link_type, link)
+        self._record(
+            "ensure_promotion_config", asset_id, link_type, link, drama_name, platform
+        )
         if self._dry_run:
-            return f"cfg-{asset_id}-{link_type}"
-        config_name = f"{link_type}-{asset_id}"
+            return f"{link_type}-{platform}-{drama_name}"
+        config_name = f"{link_type}-{platform}-{drama_name}"
         return PromotionConfigPage(self._page, self._selectors).create_missing(
-            config_name, link
+            config_name, link, drama_name
         )
 
     def submit_plan(self, plan_spec: Any) -> str:
@@ -93,5 +102,7 @@ class DeliverySystemAdapter(DeliverySystemAdapterProtocol):
         return TaskStatusPage(self._page, self._selectors).poll(external_task_id)
 
     def _record(self, name: str, *args: Any, **kwargs: Any) -> None:
+        if not self._dry_run:
+            return
         self._recorded_calls.append((name, args, kwargs))
         logger.info("delivery system adapter 记录调用 dry_run=%s: %s", self._dry_run, name)

@@ -87,8 +87,17 @@ class RecordingDeliveryAdapter(MockDeliverySystemAdapter):
         self.config_link_types: list[str] = []
         self.submitted_link_sets: list[dict[str, str]] = []
 
-    def ensure_promotion_config(self, asset_id: str, link_type: str, link: str) -> str:
-        config_id = super().ensure_promotion_config(asset_id, link_type, link)
+    def ensure_promotion_config(
+        self,
+        asset_id: str,
+        link_type: str,
+        link: str,
+        drama_name: str,
+        platform: str,
+    ) -> str:
+        config_id = super().ensure_promotion_config(
+            asset_id, link_type, link, drama_name, platform
+        )
         self.config_ids.append(config_id)
         self.config_link_types.append(link_type)
         return config_id

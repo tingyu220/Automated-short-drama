@@ -14,7 +14,7 @@ class FakeDeliverySystemAdapter:
 
     def __init__(self, poll_statuses: list[str] | None = None) -> None:
         self._assets: dict[tuple[str, str], DramaAsset] = {}
-        self.config_calls: list[tuple[str, str, str]] = []
+        self.config_calls: list[tuple[str, str, str, str, str]] = []
         self.submitted_plans: list[PlanSpec] = []
         self.poll_calls: list[str] = []
         self._poll_statuses = list(poll_statuses or [])
@@ -33,9 +33,14 @@ class FakeDeliverySystemAdapter:
         return asset
 
     def ensure_promotion_config(
-        self, asset_id: str, link_type: str, link: str
+        self,
+        asset_id: str,
+        link_type: str,
+        link: str,
+        drama_name: str,
+        platform: str,
     ) -> str:
-        self.config_calls.append((asset_id, link_type, link))
+        self.config_calls.append((asset_id, link_type, link, drama_name, platform))
         return f"cfg-{asset_id}-{link_type}"
 
     def submit_plan(self, plan_spec: PlanSpec) -> str:
@@ -99,10 +104,14 @@ class TestEnsurePromotionConfig:
         service = DeliveryFlowService(delivery, FakeOceanEngineAdapter())
         asset = service.ensure_drama_asset("剧A", "mock://iaa/剧A")
 
-        config_id = service.ensure_promotion_config(asset, "IAA", "mock://iaa/剧A")
+        config_id = service.ensure_promotion_config(
+            asset, "IAA", "mock://iaa/剧A", "TOMATO"
+        )
 
         assert config_id == "cfg-dd-1-IAA"
-        assert delivery.config_calls == [("dd-1", "IAA", "mock://iaa/剧A")]
+        assert delivery.config_calls == [
+            ("dd-1", "IAA", "mock://iaa/剧A", "剧A", "TOMATO")
+        ]
 
 
 class TestCreateProduct:

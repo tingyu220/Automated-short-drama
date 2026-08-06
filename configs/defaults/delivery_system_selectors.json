@@ -8,6 +8,7 @@
   "album_id_field": "input[data-testid=album-id-field]",
   "delivery_drama_id_field": "input[data-testid=delivery-drama-id-field]",
   "config_search_input": "input[data-testid=config-search-input]",
+  "config_row": "tr[data-testid=config-row]",
   "config_create_button": "button[data-testid=config-create-button]",
   "config_name_input": "input[data-testid=config-name-input]",
   "config_main_drama": "input[data-testid=config-main-drama]",
@@ -16,6 +17,10 @@
   "config_save_button": "button[data-testid=config-save-button]",
   "plan_submit_button": "button[data-testid=plan-submit-button]",
   "confirm_submit_button": "button[data-testid=confirm-submit-button]",
+  "plan_task_name": "input[data-testid=plan-task-name]",
+  "plan_account_cid": "input[data-testid=plan-account-cid]",
+  "plan_product": "input[data-testid=plan-product]",
+  "plan_promotion_config": "input[data-testid=plan-promotion-config]",
   "task_row": "tr[data-testid=task-row]",
   "task_status_cell": "td[data-testid=task-status-cell]"
 }

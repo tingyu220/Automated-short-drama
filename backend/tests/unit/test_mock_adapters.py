@@ -131,8 +131,10 @@ class TestMockDeliverySystemAdapter:
     def test_ensure_promotion_config(self):
         adapter = MockDeliverySystemAdapter()
         assert (
-            adapter.ensure_promotion_config("dd-1", "IAA", "mock://iaa/剧A?ep=1")
-            == "cfg-dd-1-IAA"
+            adapter.ensure_promotion_config(
+                "dd-1", "IAA", "mock://iaa/剧A?ep=1", "剧A", "TOMATO"
+            )
+            == "IAA-TOMATO-剧A"
         )
 
     def test_submit_plan_deterministic(self):

@@ -8,7 +8,11 @@ from typing import Any
 
 import pytest
 
-from backend.domain.errors.domain_error import ExternalAdapterError
+from backend.domain.errors.domain_error import (
+    ConfigurationError,
+    ExternalAdapterError,
+)
+from backend.domain.plans.plan_spec import PlanSpec
 from backend.domain.ports.adapters import DeliverySystemAdapter, DramaAsset
 from backend.platforms.delivery_system.delivery_system_adapter import (
     DeliverySystemAdapter as PlaywrightDeliverySystemAdapter,
@@ -25,6 +29,7 @@ SELECTORS = {
     "album_id_field": "#album-id-field",
     "delivery_drama_id_field": "#delivery-drama-id-field",
     "config_search_input": "#config-search-input",
+    "config_row": "#config-row",
     "config_create_button": "#config-create-button",
     "config_name_input": "#config-name-input",
     "config_main_drama": "#config-main-drama",
@@ -33,6 +38,10 @@ SELECTORS = {
     "config_save_button": "#config-save-button",
     "plan_submit_button": "#plan-submit-button",
     "confirm_submit_button": "#confirm-submit-button",
+    "plan_task_name": "#plan-task-name",
+    "plan_account_cid": "#plan-account-cid",
+    "plan_product": "#plan-product",
+    "plan_promotion_config": "#plan-promotion-config",
     "task_row": "#task-row",
     "task_status_cell": "#task-status-cell",
 }
@@ -205,22 +214,29 @@ class TestPromotionConfig:
         adapter = make_adapter(page=page, dry_run=False)
 
         result = adapter.ensure_promotion_config(
-            "dd-1", "IAA", "https://delivery.example.com/iaa/1"
+            "dd-1",
+            "IAA",
+            "https://delivery.example.com/iaa/1",
+            "剧A",
+            "TOMATO",
         )
 
         assert result == "OK"
         assert page.locators[SELECTORS["config_search_input"]].calls == [
-            ("fill", ("IAA-dd-1",), {}),
+            ("fill", ("IAA-TOMATO-剧A",), {}),
             ("press", ("Enter",), {}),
+        ]
+        assert page.locators[SELECTORS["config_row"]].calls == [
+            ("evaluate_all", ("(rows) => rows.map(row => row.innerText.trim())",), {"arg": None})
         ]
         assert page.locators[SELECTORS["config_create_button"]].calls == [
             ("click", (), {})
         ]
         assert page.locators[SELECTORS["config_name_input"]].calls == [
-            ("fill", ("IAA-dd-1",), {})
+            ("fill", ("IAA-TOMATO-剧A",), {})
         ]
         assert page.locators[SELECTORS["config_main_drama"]].calls == [
-            ("fill", ("IAA-dd-1",), {})
+            ("fill", ("剧A",), {})
         ]
         assert page.locators[SELECTORS["config_distributor"]].calls == [
             ("fill", ("微智造",), {})
@@ -234,24 +250,41 @@ class TestPromotionConfig:
 
     def test_create_missing_reuses_existing_config(self):
         page = FakePage()
-        page.set_rows(SELECTORS["task_row"], ["IAA-dd-1"])
+        page.set_rows(SELECTORS["config_row"], ["IAA-TOMATO-剧A"])
         adapter = make_adapter(page=page, dry_run=False)
 
-        result = adapter.ensure_promotion_config("dd-1", "IAA", "link")
+        result = adapter.ensure_promotion_config(
+            "dd-1", "IAA", "link", "剧A", "TOMATO"
+        )
 
-        assert result == "IAA-dd-1"
+        assert result == "IAA-TOMATO-剧A"
         assert SELECTORS["config_create_button"] not in page.locators
 
     def test_create_missing_raises_drama_mismatch(self):
         page = FakePage()
-        page.set_rows(SELECTORS["task_row"], [])
+        page.set_rows(SELECTORS["config_row"], [])
         page.set_text(SELECTORS["task_status_cell"], "DRAMA_MISMATCH: 链接与主剧不一致")
         adapter = make_adapter(page=page, dry_run=False)
 
         with pytest.raises(ExternalAdapterError) as exc:
-            adapter.ensure_promotion_config("dd-1", "IAA", "link")
+            adapter.ensure_promotion_config(
+                "dd-1", "IAA", "link", "剧A", "TOMATO"
+            )
 
         assert exc.value.code == "PROMOTION_LINK_DRAMA_MISMATCH"
+
+    def test_create_missing_empty_result_raises_result_uncertain(self):
+        page = FakePage()
+        page.set_rows(SELECTORS["config_row"], [])
+        page.set_text(SELECTORS["task_status_cell"], "")
+        adapter = make_adapter(page=page, dry_run=False)
+
+        with pytest.raises(ExternalAdapterError) as exc:
+            adapter.ensure_promotion_config(
+                "dd-1", "IAA", "link", "剧A", "TOMATO"
+            )
+
+        assert exc.value.code == "RESULT_UNCERTAIN"
 
 
 class TestPlanSubmit:
@@ -261,10 +294,30 @@ class TestPlanSubmit:
         page = FakePage()
         page.set_text(SELECTORS["task_row"], "task-20260806-001")
         adapter = make_adapter(page=page, dry_run=False)
+        spec = PlanSpec(
+            drama_name="剧A",
+            platform="TOMATO",
+            task_name="番茄#端免剧A测试任务",
+            link_set={"IAA": "https://delivery.example.com/iaa/1"},
+            account_cids=["cid-1", "cid-2"],
+            product_id="prod-1",
+        )
 
-        task_id = adapter.submit_plan({"drama_name": "剧A"})
+        task_id = adapter.submit_plan(spec)
 
         assert task_id == "task-20260806-001"
+        assert page.locators[SELECTORS["plan_task_name"]].calls == [
+            ("fill", ("番茄#端免剧A测试任务",), {})
+        ]
+        assert page.locators[SELECTORS["plan_account_cid"]].calls == [
+            ("fill", ("cid-1",), {})
+        ]
+        assert page.locators[SELECTORS["plan_product"]].calls == [
+            ("fill", ("prod-1",), {})
+        ]
+        assert page.locators[SELECTORS["plan_promotion_config"]].calls == [
+            ("fill", ("https://delivery.example.com/iaa/1",), {})
+        ]
         assert page.locators[SELECTORS["plan_submit_button"]].calls == [
             ("click", (), {})
         ]
@@ -276,11 +329,39 @@ class TestPlanSubmit:
         page = FakePage()
         page.set_text(SELECTORS["task_row"], "")
         adapter = make_adapter(page=page, dry_run=False)
+        spec = PlanSpec(
+            drama_name="剧A",
+            platform="TOMATO",
+            task_name="番茄#端免剧A测试任务",
+            link_set={"IAA": "link"},
+            account_cids=["cid-1"],
+            product_id="prod-1",
+        )
 
         with pytest.raises(ExternalAdapterError) as exc:
-            adapter.submit_plan({"drama_name": "剧A"})
+            adapter.submit_plan(spec)
 
         assert exc.value.code == "RESULT_UNCERTAIN"
+
+    def test_submit_missing_selector_raises_configuration_error(self):
+        selectors = dict(SELECTORS)
+        del selectors["plan_product"]
+        adapter = PlaywrightDeliverySystemAdapter(
+            selectors=selectors, page=FakePage(), dry_run=False
+        )
+        spec = PlanSpec(
+            drama_name="剧A",
+            platform="TOMATO",
+            task_name="番茄#端免剧A测试任务",
+            link_set={"IAA": "link"},
+            account_cids=["cid-1"],
+            product_id="prod-1",
+        )
+
+        with pytest.raises(ConfigurationError) as exc:
+            adapter.submit_plan(spec)
+
+        assert exc.value.code == "CONFIGURATION_ERROR"
 
 
 class TestTaskStatus:
@@ -299,7 +380,7 @@ class TestTaskStatus:
             ("COMPLETED", "COMPLETED"),
             ("部分失败", "PARTIAL_FAILED"),
             ("FAILED", "FAILED"),
-            ("投放中", "投放中"),
+            ("投放中", "OTHER"),
         ],
     )
     def test_poll_maps_status(self, raw, expected):
@@ -328,7 +409,7 @@ class TestDryRun:
         adapter = make_adapter(page=page, dry_run=True)
 
         adapter.find_or_create_drama_asset("剧A", "link")
-        adapter.ensure_promotion_config("dd-1", "IAA", "link")
+        adapter.ensure_promotion_config("dd-1", "IAA", "link", "剧A", "TOMATO")
         adapter.submit_plan({"drama_name": "剧A"})
         adapter.poll_task_status("task-1")
 
@@ -339,6 +420,36 @@ class TestDryRun:
             "submit_plan",
             "poll_task_status",
         ]
+
+    def test_non_dry_run_does_not_record_calls(self):
+        page = FakePage()
+        page.set_rows(SELECTORS["config_row"], [])
+        page.set_text(SELECTORS["task_status_cell"], "OK")
+        page.set_text(SELECTORS["task_row"], "task-1")
+        page.set_text(
+            f"{SELECTORS['task_row']}:has-text('task-1') "
+            f"{SELECTORS['task_status_cell']}",
+            "COMPLETED",
+        )
+        page.set_value(SELECTORS["delivery_drama_id_field"], "dd-1")
+        page.set_value(SELECTORS["album_id_field"], "album-1")
+        adapter = make_adapter(page=page, dry_run=False)
+
+        adapter.find_or_create_drama_asset("剧A", "link")
+        adapter.ensure_promotion_config("dd-1", "IAA", "link", "剧A", "TOMATO")
+        adapter.submit_plan(
+            PlanSpec(
+                drama_name="剧A",
+                platform="TOMATO",
+                task_name="task-name",
+                link_set={"IAA": "link"},
+                account_cids=["cid-1"],
+                product_id="prod-1",
+            )
+        )
+        adapter.poll_task_status("task-1")
+
+        assert adapter.recorded_calls == []
 
 
 class TestConfig:
