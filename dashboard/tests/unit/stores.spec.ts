@@ -346,7 +346,16 @@ describe("useExceptionStore", () => {
     const store = useExceptionStore()
     await store.fetchExceptions()
 
-    expect(store.exceptions).toEqual(payload)
+    expect(store.exceptions).toEqual([
+      {
+        ...payload[0],
+        category: "login_required",
+        category_label: "需要重新登录",
+        risk: "high",
+        risk_label: "高风险",
+        risk_color: "var(--color-status-failed)"
+      }
+    ])
     expect(store.loading).toBe(false)
     expect(store.error).toBeNull()
   })
