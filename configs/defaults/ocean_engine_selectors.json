@@ -1,0 +1,20 @@
+{
+  "base_url": "https://business.oceanengine.com",
+  "product_menu": [
+    "杨硕总体户",
+    "B组李伟层级",
+    "资产",
+    "商品管理",
+    "通用版",
+    "lw全域ROI3产品库"
+  ],
+  "product_create_button": "button[data-testid=product-create-button]",
+  "product_carrier": "input[data-testid=product-carrier]",
+  "product_album_id": "input[data-testid=product-album-id]",
+  "product_copyright": "input[data-testid=product-copyright]",
+  "product_monetization": "input[data-testid=product-monetization]",
+  "product_save_button": "button[data-testid=product-save-button]",
+  "product_row": "tr[data-testid=product-row]",
+  "product_id_field": "input[data-testid=product-id-field]",
+  "confirm_dialog": "button[data-testid=confirm-dialog]"
+}
