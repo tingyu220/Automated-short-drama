@@ -1,7 +1,8 @@
 """生产验证报告生成：汇总阶梯结果并渲染 Markdown。"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -9,12 +10,27 @@ from backend.application.services.production_validation_service import (
     LadderStepResult,
 )
 
+TABLE_HEADER = "| 步骤 | 剧名 | 计划类型 | 状态 | 外部任务ID | 台账ID | 通过 |"
+TABLE_SEPARATOR = "|---|---|---|---|---|---|---|"
+
+
+def _cell(value: Any) -> str:
+    """转义 Markdown 表格单元格中的竖线与换行。"""
+    return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def _meta_value(value: Any) -> str:
+    """标量直接输出，复杂值以 JSON 序列化。"""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False, default=str)
+
 
 @dataclass
 class ProductionReport:
     """一次生产验证阶梯的最终报告。"""
 
-    generated_at: datetime
+    generated_at: datetime  # UTC aware
     meta: dict[str, Any]
     steps: list[LadderStepResult]
     summary: dict[str, int]
@@ -48,18 +64,18 @@ class ProductionReportService:
             f"- 生成时间：{report.generated_at.isoformat()}",
         ]
         for key, value in report.meta.items():
-            lines.append(f"- {key}：{value}")
-        lines += ["", "| 步骤 | 剧名 | 计划类型 | 状态 | 外部任务ID | 台账ID | 通过 |", "|---|---|---|---|---|---|---|"]
+            lines.append(f"- {key}：{_meta_value(value)}")
+        lines += ["", TABLE_HEADER, TABLE_SEPARATOR]
         for step in report.steps:
             lines.append(
                 "| {step_name} | {drama_name} | {plan_type} | {status} | "
                 "{external_task_id} | {ledger_id} | {passed} |".format(
-                    step_name=step.step_name,
-                    drama_name=step.drama_name,
-                    plan_type=step.plan_type,
-                    status=step.status,
-                    external_task_id=step.external_task_id or "-",
-                    ledger_id=step.ledger_id or "-",
+                    step_name=_cell(step.step_name),
+                    drama_name=_cell(step.drama_name),
+                    plan_type=_cell(step.plan_type),
+                    status=_cell(step.status),
+                    external_task_id=_cell(step.external_task_id or "-"),
+                    ledger_id=_cell(step.ledger_id or "-"),
                     passed="PASS" if step.passed else "FAIL",
                 )
             )
@@ -69,7 +85,7 @@ class ProductionReportService:
             f"**汇总**: 总 {summary['total']} / 通过 {summary['passed']} / 失败 {summary['failed']}",
             f"**总体**: {'PASS' if report.overall_passed else 'FAIL'}",
         ]
-        if summary["failed"] > 0:
+        if not report.overall_passed and report.steps:
             lines.append("")
             lines.append("> 下一步建议：检查对应外部任务与异常中心。")
         return "\n".join(lines) + "\n"
