@@ -132,9 +132,9 @@ Worker 完成链路风险说明：当前 StandardDeliveryService 先向注入的
 可能出现“M=1 已写、正式台账缺失”的外部副作用。
 真实链路接入前必须改为延迟写 M=1 或失败补偿，Mock 验收阶段不受影响。
 
-Worker 执行器开关说明：Mock 验收阶段 `build_worker_executor` 默认
-`use_real_adapters=True`，与 CLI Mock 模式一致地模拟完整提交链路；接入真实 bundle 时
-必须显式传 `False`，真实提交仍由 `WORKBUDDY_ALLOW_FINAL_SUBMIT` 把关。
+Worker 执行器开关说明：`build_worker_executor` 默认 `use_real_adapters=False`，
+生产 Worker 调用点显式传 `False`，真实提交由 `WORKBUDDY_ALLOW_FINAL_SUBMIT` 把关；
+Mock 验收测试显式传 `True`，与 CLI Mock 模式一致地模拟完整提交链路。
 - 失败原因不写表，只存本地 SQLite + `data/`。
 
 ### 6.2 iaa账户

@@ -118,6 +118,7 @@ def _process(
     *,
     account_rows: list[AccountRow] | None = None,
     settings: Settings | None = None,
+    use_real_adapters: bool = True,
 ) -> tuple:
     """用真实编排 executor 处理已领取任务并提交事务。"""
     settings = settings or Settings(allow_final_submit=True)
@@ -131,6 +132,7 @@ def _process(
             bundle,
             session,
             account_rows=account_rows,
+            use_real_adapters=use_real_adapters,
         ),
         queue_repo,
         task_repo,
@@ -190,6 +192,7 @@ class TestPhase10FullScenario:
             bundle,
             claimed,
             settings=Settings(allow_final_submit=False),
+            use_real_adapters=False,
         )
 
         assert result.final_queue_state == QueueState.COMPLETED

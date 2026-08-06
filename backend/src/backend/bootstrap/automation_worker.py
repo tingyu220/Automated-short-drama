@@ -109,6 +109,7 @@ def _run_cycle(
                 settings,
                 build_adapters(settings, use_real=False),
                 session,
+                use_real_adapters=False,
             )
         service = WorkerExecutionService(
             executor,

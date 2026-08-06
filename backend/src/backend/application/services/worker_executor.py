@@ -95,7 +95,7 @@ def build_worker_executor(
     *,
     include_test: bool = False,
     account_rows: list[AccountRow] | None = None,
-    use_real_adapters: bool = True,
+    use_real_adapters: bool = False,
 ) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
     """组装 Worker 真实编排执行器；account_rows 仅用于测试注入。"""
     price_rules = SqlAlchemyPriceRuleRepository(session).list_template_price_rules()
@@ -110,8 +110,7 @@ def build_worker_executor(
     )
     rows = MOCK_ACCOUNT_ROWS if account_rows is None else account_rows
     scratch_ledger_repo = _ScratchLedgerRepository()
-    # Mock 验收阶段 use_real_adapters=True 模拟完整提交链路（与 CLI Mock 模式一致）；
-    # 接入真实 bundle 时必须显式传 False，真实提交仍由 settings.allow_final_submit 把关。
+    # 安全默认 False；Mock 验收测试需显式传 True 模拟完整提交链路（与 CLI Mock 模式一致）。
     delivery = StandardDeliveryService(
         PlanValidationService(),
         bundle.delivery,
