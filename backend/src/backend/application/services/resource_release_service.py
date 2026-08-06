@@ -1,6 +1,7 @@
 """资源释放服务 —— 完成后释放 Worker 租约与浏览器会话."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -20,6 +21,8 @@ from backend.infrastructure.database.repositories.queue_repository import (
 from backend.infrastructure.database.repositories.task_repository import (
     SqlAlchemyTaskRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserSession(Protocol):
@@ -69,10 +72,19 @@ class ResourceReleaseService:
 
         if release_lease is None:
             release_lease = worker_heartbeat.release_lease
-        release_lease(session, worker_id)
+        if not release_lease(session, worker_id):
+            logger.warning(
+                "Worker 租约释放未命中: worker_id=%s", worker_id
+            )
 
         if browser_session is not None:
-            browser_session.close()
+            try:
+                browser_session.close()
+            except Exception:
+                logger.exception(
+                    "浏览器会话关闭失败，不影响任务完成: worker_id=%s",
+                    worker_id,
+                )
         return ledger
 
     def release_idle_browser(

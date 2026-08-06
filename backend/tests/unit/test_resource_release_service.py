@@ -223,6 +223,57 @@ class TestReleaseAfterCompletion:
 
         assert ledger.final_status == "COMPLETED"
 
+    def test_browser_close_error_does_not_rollback_completion(
+        self, monkeypatch
+    ):
+        """浏览器关闭异常不应阻断任务完成。"""
+        item = _make_item()
+        task = _make_task()
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = FakeTaskRepository({"task-1": task})
+        ledger_repo = FakeLedgerRepository()
+        _patch_repos(monkeypatch, queue_repo, task_repo, ledger_repo)
+
+        class BrokenBrowser:
+            last_active = datetime(2026, 8, 6, 11, 0, tzinfo=timezone.utc)
+
+            def close(self):
+                raise RuntimeError("browser boom")
+
+        service = ResourceReleaseService()
+        ledger = service.release_after_completion(
+            FakeSession(),
+            "qi-1",
+            "worker-1",
+            {},
+            browser_session=BrokenBrowser(),
+            release_lease=lambda session, worker_id: True,
+        )
+
+        assert ledger is not None
+        assert ledger.final_status == "COMPLETED"
+
+    def test_missing_lease_does_not_fail_completion(self, monkeypatch):
+        """release_lease 返回 False 只记录警告，不阻断完成。"""
+        item = _make_item()
+        task = _make_task()
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = FakeTaskRepository({"task-1": task})
+        ledger_repo = FakeLedgerRepository()
+        _patch_repos(monkeypatch, queue_repo, task_repo, ledger_repo)
+
+        service = ResourceReleaseService()
+        ledger = service.release_after_completion(
+            FakeSession(),
+            "qi-1",
+            "worker-1",
+            {},
+            release_lease=lambda session, worker_id: False,
+        )
+
+        assert ledger is not None
+        assert ledger.final_status == "COMPLETED"
+
 
 class TestReleaseIdleBrowser:
     """release_idle_browser 单元测试。"""
