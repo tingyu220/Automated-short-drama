@@ -6,9 +6,10 @@ import io
 import json
 import logging
 import subprocess
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from typing import Any, Callable
 
+from backend.domain.common.timezones import SHANGHAI_TZ, as_utc
 from backend.domain.errors.domain_error import ExternalAdapterError, ValidationError
 from backend.domain.ports.adapters import FeishuAdapter as FeishuAdapterProtocol
 from backend.domain.tasks.drama_task import DramaTask
@@ -46,10 +47,18 @@ class FeishuAdapter(FeishuAdapterProtocol):
         command = self._read_command("+csv-get", "--range", _FETCH_RANGE)
         result = self._run(command)
         annotated_csv = _annotated_csv(result)
+        local_start = datetime.combine(day, time.min, tzinfo=SHANGHAI_TZ)
+        local_end = datetime.combine(
+            day + timedelta(days=1),
+            time.min,
+            tzinfo=SHANGHAI_TZ,
+        )
+        start_utc = as_utc(local_start)
+        end_utc = as_utc(local_end)
         return [
             task
             for task in parse_task_rows(annotated_csv)
-            if task.available_time.date() == day
+            if start_utc <= task.available_time < end_utc
         ]
 
     def write_links(self, task_id: str, links: dict[str, str]) -> None:

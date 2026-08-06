@@ -1,6 +1,7 @@
 """SQLite 连接与 Alembic 集成测试."""
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -90,7 +91,11 @@ class TestBackup:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             source = tmp / "test.db"
-            source.write_text("dummy db content")
+            conn = sqlite3.connect(source)
+            conn.execute("CREATE TABLE t (x INTEGER)")
+            conn.execute("INSERT INTO t VALUES (42)")
+            conn.commit()
+            conn.close()
             backup_dir = tmp / "data" / "backups"
 
             result = backup_database(source, backup_dir)
@@ -99,7 +104,28 @@ class TestBackup:
             assert result.name.startswith("app-")
             assert result.name.endswith(".db")
             assert result.parent == backup_dir
-            assert result.read_text() == "dummy db content"
+            check = sqlite3.connect(result)
+            try:
+                assert check.execute("SELECT x FROM t").fetchall() == [(42,)]
+            finally:
+                check.close()
+
+    def test_backup_does_not_overwrite_existing_backup(self):
+        """同秒重复备份不会覆盖已有文件。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "test.db"
+            conn = sqlite3.connect(source)
+            conn.execute("CREATE TABLE t (x INTEGER)")
+            conn.commit()
+            conn.close()
+            backup_dir = tmp / "backups"
+
+            first = backup_database(source, backup_dir)
+            second = backup_database(source, backup_dir)
+
+            assert first != second
+            assert first.exists() and second.exists()
 
     def test_backup_source_not_found_raises(self):
         """源文件不存在时抛出 ConfigurationError。"""

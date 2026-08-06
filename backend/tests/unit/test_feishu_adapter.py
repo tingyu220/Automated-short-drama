@@ -15,6 +15,7 @@ SAMPLE_CSV = (
     "[row=2]组A,备注2,,,2026/08/06 10:00,剧A,备注,TOMATO,,linkJ,linkK,linkL,,有人未上\n"
     "[row=3]组B,,,,2026-08-06 14:30,剧B,备注,JUBIAN,,,,,,OK\n"
     "[row=4]组C,,,,2026-08-07 09:00,剧C,备注,TOMATO,,,,,,\n"
+    "[row=5]组D,,,,2026-08-07 00:30,剧D,备注,TOMATO,,,,,,\n"
 )
 
 
@@ -75,7 +76,7 @@ class TestFeishuAdapterFetch:
 
         tasks = adapter.fetch_tasks(date(2026, 8, 7))
 
-        assert [task.drama_name for task in tasks] == ["剧C"]
+        assert [task.drama_name for task in tasks] == ["剧C", "剧D"]
 
 
 class TestFeishuAdapterWrite:
