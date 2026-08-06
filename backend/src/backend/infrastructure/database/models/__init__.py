@@ -3,6 +3,18 @@ from backend.infrastructure.database.models.execution import (  # noqa: F401
     ExecutionArtifactRecord,
     ExecutionEventRecord,
 )
+from backend.infrastructure.database.models.rule import (  # noqa: F401
+    ConfigChangeLogRecord,
+    ConfigSnapshotRecord,
+    DouyinAccountRecord,
+    MaterialRuleRangeRecord,
+    PlatformResourceConfigRecord,
+    PresetMappingRecord,
+    RuleParameterRecord,
+    RuleSetRecord,
+    RuleVersionRecord,
+    TemplatePriceRuleRecord,
+)
 from backend.infrastructure.database.models.worker import WorkerLeaseRecord  # noqa: F401
 from backend.infrastructure.database.models.task import (  # noqa: F401
     DramaTaskRecord,
