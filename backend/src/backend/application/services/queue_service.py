@@ -9,13 +9,13 @@ from backend.domain.queue.state_machine import QueueStateMachine
 
 
 def enqueue_when_ready(items: list[QueueItem], now: datetime) -> list[QueueItem]:
-    """将 state=WAITING_TIME 且 available_at <= now 的项转为 QUEUED，返回全部项。"""
+    """返回 state=WAITING_TIME 且 available_at <= now 的项，副本状态置为 QUEUED。"""
     result: list[QueueItem] = []
     for item in items:
-        cp = deepcopy(item)
-        if cp.state == QueueState.WAITING_TIME and cp.available_at <= now:
+        if item.state == QueueState.WAITING_TIME and item.available_at <= now:
+            cp = deepcopy(item)
             cp.state = QueueStateMachine.transition(cp.state, QueueState.QUEUED)
-        result.append(cp)
+            result.append(cp)
     return result
 
 

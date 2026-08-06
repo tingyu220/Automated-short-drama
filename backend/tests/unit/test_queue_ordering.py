@@ -28,7 +28,7 @@ def _make_item(task_id: str, state: str = QueueState.WAITING_TIME,
 class TestEnqueueWhenReady:
 
     def test_converts_ready_items_to_queued(self) -> None:
-        """WAITING_TIME 且 available_at <= now 的项转为 QUEUED。"""
+        """enqueue_when_ready 只返回匹配项：WAITING_TIME 且 available_at <= now。"""
         now = datetime.now(timezone.utc)
         past = now - timedelta(minutes=5)
         future = now + timedelta(hours=1)
@@ -41,16 +41,17 @@ class TestEnqueueWhenReady:
 
         result = enqueue_when_ready(items, now)
 
-        assert result[0].state == QueueState.QUEUED   # 到期 → 入队
-        assert result[1].state == QueueState.WAITING_TIME  # 未到期
-        assert result[2].state == QueueState.QUEUED   # 已是 QUEUED 不动
+        # 只返回 t1（到期且 WAITING_TIME）；t2 未到期，t3 已 QUEUED 不匹配
+        assert len(result) == 1
+        assert result[0].id == "t1"
+        assert result[0].state == QueueState.QUEUED
 
-    def test_does_not_double_enqueue(self) -> None:
-        """已 QUEUED 的项不会被重复转换。"""
+    def test_does_not_return_non_matching(self) -> None:
+        """已 QUEUED 的项不在返回结果中（不是 WAITING_TIME）。"""
         now = datetime.now(timezone.utc)
         items = [_make_item("t1", state=QueueState.QUEUED)]
         result = enqueue_when_ready(items, now)
-        assert result[0].state == QueueState.QUEUED
+        assert result == []
 
     def test_returns_deep_copies(self) -> None:
         """返回的是副本，原列表不受影响。"""
@@ -58,6 +59,7 @@ class TestEnqueueWhenReady:
         past = now - timedelta(minutes=5)
         items = [_make_item("t1", state=QueueState.WAITING_TIME, available_at=past)]
         result = enqueue_when_ready(items, now)
+        assert len(result) == 1
         assert result[0].state == QueueState.QUEUED
         assert items[0].state == QueueState.WAITING_TIME  # 原列表不变
 
@@ -65,7 +67,7 @@ class TestEnqueueWhenReady:
 class TestPeekNext:
 
     def test_returns_queued_items_sorted(self) -> None:
-        """返回 QUEUED 项，按 priority DESC → available_at ASC → id ASC。"""
+        """返回 QUEUED 项，按 priority DESC -> available_at ASC -> id ASC。"""
         now = datetime.now(timezone.utc)
         items = [
             _make_item("t1", state=QueueState.QUEUED, priority=0, available_at=now),
@@ -73,12 +75,8 @@ class TestPeekNext:
             _make_item("t3", state=QueueState.QUEUED, priority=5, available_at=now),
             _make_item("t4", state=QueueState.WAITING_TIME, priority=99),  # 非 QUEUED 忽略
         ]
-        # 排序: priority DESC: t2(5)>t3(5)>t1(0); 同 priority: t3(avail early)>t2(avail late)
-        # 期望顺序: t3, t2, t1
-        # 注意 id 排序: t3 vs t2 按 available_at 排，t3 更早; 如果 available_at 相同则按 id
         result = peek_next(items, limit=3)
         assert len(result) == 3
-        # 修正预期: t3(prio5, avail=now) > t2(prio5, avail=now+10min) > t1(prio0)
         assert result[0].id == "t3"
         assert result[1].id == "t2"
         assert result[2].id == "t1"
@@ -123,7 +121,7 @@ class TestPeekNext:
 class TestToClaimed:
 
     def test_transitions_to_claimed_and_sets_fields(self) -> None:
-        """QUEUED→CLAIMED，写入 claimed_by 和 lease_until。"""
+        """QUEUED->CLAIMED，写入 claimed_by 和 lease_until。"""
         now = datetime.now(timezone.utc)
         future = now + timedelta(minutes=5)
         item = _make_item("t1", state=QueueState.QUEUED)
