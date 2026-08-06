@@ -82,6 +82,12 @@ class WorkerExecutionService:
         self._task_repo.update(task)
 
         outcome = self._invoke_executor(task, item)
+        if outcome.status not in (
+            STATUS_COMPLETED,
+            STATUS_MANUAL_REVIEW,
+            STATUS_FAILED,
+        ):
+            raise ValueError(f"未知执行结果状态: {outcome.status}")
         events = self._build_events(task, outcome, now)
         for execution_event in events:
             self._event_repo.add_event(execution_event)
@@ -95,8 +101,6 @@ class WorkerExecutionService:
                 event_count=len(events),
             )
 
-        if outcome.status not in (STATUS_MANUAL_REVIEW, STATUS_FAILED):
-            raise ValueError(f"未知执行结果状态: {outcome.status}")
         item.state = QueueStateMachine.transition(item.state, outcome.status)
         self._queue_repo.update(item)
         task.status = outcome.status

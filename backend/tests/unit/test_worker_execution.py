@@ -212,6 +212,30 @@ class TestWorkerExecutionService:
         assert len(errors) == 1
         assert errors[0].message
 
+    def test_failed_outcome_moves_queue_and_task_to_failed(self):
+        task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
+
+        def executor(_task, _item):
+            return ExecutionOutcome(status="FAILED")
+
+        service = WorkerExecutionService(
+            executor,
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            event_repo,
+            "worker-1",
+        )
+
+        result = service.process_claimed(item, NOW)
+
+        assert result.final_queue_state == QueueState.FAILED
+        assert result.ledger_id is None
+        assert queue_repo.get("queue-1").state == QueueState.FAILED
+        assert task_repo.get("task-1").status == TaskStatus.FAILED
+        errors = event_repo.list_events(task_id=task.id, level=EventLevel.ERROR)
+        assert len(errors) == 1
+
     def test_executor_exception_is_treated_as_manual_review(self):
         task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
 

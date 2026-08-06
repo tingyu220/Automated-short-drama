@@ -80,8 +80,9 @@ def _run_cycle(
     """执行一轮 Worker cycle：心跳 + 队列推进 + 认领任务执行。"""
     lease = heartbeat(session, worker_id, host, pid, lease_seconds)
     heartbeat_text = f"心跳 (lease_until={lease.lease_until.isoformat()})"
+    # 心跳先独立提交，避免执行段异常回滚时把租约一并回滚
+    session.commit()
     if skip_execution:
-        session.commit()
         return f"{heartbeat_text}，跳过执行（--skip-execution）"
 
     now = datetime.now(timezone.utc)
@@ -153,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         "--once",
         action="store_true",
         default=False,
-        help="单次心跳后退出",
+        help="单次完整 cycle（心跳+推进+执行）后退出",
     )
     parser.add_argument(
         "--skip-seed",
