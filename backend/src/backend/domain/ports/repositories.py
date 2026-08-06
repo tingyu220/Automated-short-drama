@@ -102,6 +102,7 @@ class ExecutionRepository(Protocol):
         *,
         task_id: str | None = None,
     ) -> list[ExecutionArtifact]: ...
+    def delete_artifact(self, artifact_id: str) -> None: ...
 
 
 class RuleRepository(Protocol):

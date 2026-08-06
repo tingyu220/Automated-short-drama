@@ -15,6 +15,9 @@ from backend.application.services.resource_cleanup_service import (
     ResourceCleanupService,
 )
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.repositories.execution_repository import (
+    SqlAlchemyExecutionRepository,
+)
 
 
 def _setup_temp_db(db_url: str):
@@ -91,7 +94,9 @@ class TestResourceCleanupIntegration:
                 with Session(engine) as session:
                     service = ResourceCleanupService(artifacts_root=artifacts_root)
                     deleted = service.cleanup_expired_artifacts(
-                        session, now, retention_days=30
+                        SqlAlchemyExecutionRepository(session),
+                        now,
+                        retention_days=30,
                     )
                     session.commit()
 

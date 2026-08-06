@@ -19,6 +19,9 @@ from backend.infrastructure.database.base import Base
 from backend.infrastructure.database.models.execution import (
     ExecutionArtifactRecord,
 )
+from backend.infrastructure.database.repositories.execution_repository import (
+    SqlAlchemyExecutionRepository,
+)
 from backend.infrastructure.database.models.task import DramaTaskRecord
 
 
@@ -110,7 +113,9 @@ class TestCleanupExpiredArtifacts:
         _add_artifact(session, task_id, str(fresh_file), now - timedelta(days=1))
 
         service = ResourceCleanupService(artifacts_root=root)
-        deleted = service.cleanup_expired_artifacts(session, now, retention_days=30)
+        deleted = service.cleanup_expired_artifacts(
+            SqlAlchemyExecutionRepository(session), now, retention_days=30
+        )
         session.commit()
 
         assert deleted == 1
@@ -131,7 +136,9 @@ class TestCleanupExpiredArtifacts:
             artifacts_root=root,
             config=RetentionConfig(artifact_retention_days=1),
         )
-        deleted = service.cleanup_expired_artifacts(session, now)
+        deleted = service.cleanup_expired_artifacts(
+            SqlAlchemyExecutionRepository(session), now
+        )
         session.commit()
 
         assert deleted == 1
@@ -148,7 +155,9 @@ class TestCleanupExpiredArtifacts:
 
         service = ResourceCleanupService(artifacts_root=root)
         with caplog.at_level(logging.WARNING):
-            deleted = service.cleanup_expired_artifacts(session, now)
+            deleted = service.cleanup_expired_artifacts(
+                SqlAlchemyExecutionRepository(session), now
+            )
         session.commit()
 
         assert deleted == 1
@@ -167,7 +176,9 @@ class TestCleanupExpiredArtifacts:
 
         service = ResourceCleanupService(artifacts_root=root)
         with caplog.at_level(logging.WARNING):
-            deleted = service.cleanup_expired_artifacts(session, now)
+            deleted = service.cleanup_expired_artifacts(
+                SqlAlchemyExecutionRepository(session), now
+            )
         session.commit()
 
         assert deleted == 1
@@ -261,7 +272,9 @@ class TestEnforceArtifactLimit:
             )
 
         service = ResourceCleanupService(artifacts_root=root)
-        deleted = service.enforce_artifact_limit(session, task_id, max_count=2)
+        deleted = service.enforce_artifact_limit(
+            SqlAlchemyExecutionRepository(session), task_id, max_count=2
+        )
         session.commit()
 
         assert deleted == 3

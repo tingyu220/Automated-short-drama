@@ -76,6 +76,12 @@ class SqlAlchemyExecutionRepository:
         records = self._session.execute(stmt).scalars().all()
         return [self._to_artifact(record) for record in records]
 
+    def delete_artifact(self, artifact_id: str) -> None:
+        """按 id 删除执行产物记录。"""
+        record = self._session.get(ExecutionArtifactRecord, artifact_id)
+        if record is not None:
+            self._session.delete(record)
+
     @staticmethod
     def _to_event(record: ExecutionEventRecord) -> ExecutionEvent:
         """ORM → 领域模型。"""

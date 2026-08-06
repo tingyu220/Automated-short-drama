@@ -7,13 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from backend.domain.common.timezones import as_utc
-from backend.infrastructure.database.models.execution import (
-    ExecutionArtifactRecord,
-)
+from backend.domain.ports.repositories import ExecutionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +36,7 @@ class ResourceCleanupService:
 
     def cleanup_expired_artifacts(
         self,
-        session: Session,
+        artifact_repo: ExecutionRepository,
         now: datetime,
         retention_days: int | None = None,
     ) -> int:
@@ -54,15 +49,12 @@ class ResourceCleanupService:
             retention_days = self._config.artifact_retention_days
         now = as_utc(now)
         cutoff = now - timedelta(days=retention_days)
-        stmt = select(ExecutionArtifactRecord).where(
-            ExecutionArtifactRecord.created_at < cutoff
-        )
-        records = session.execute(stmt).scalars().all()
-
         deleted = 0
-        for record in records:
-            self._safe_delete(Path(record.path), self._artifacts_root)
-            session.delete(record)
+        for artifact in artifact_repo.list_artifacts():
+            if as_utc(artifact.created_at) >= cutoff:
+                continue
+            self._safe_delete(Path(artifact.path), self._artifacts_root)
+            artifact_repo.delete_artifact(artifact.id)
             deleted += 1
         return deleted
 
@@ -112,28 +104,23 @@ class ResourceCleanupService:
 
     def enforce_artifact_limit(
         self,
-        session: Session,
+        artifact_repo: ExecutionRepository,
         task_id: str,
         max_count: int | None = None,
     ) -> int:
         """按 created_at 保留最新 N 条，删除更旧的行与物理文件，返回删除行数。"""
         if max_count is None:
             max_count = self._config.max_artifacts_per_task
-        stmt = (
-            select(ExecutionArtifactRecord)
-            .where(ExecutionArtifactRecord.task_id == task_id)
-            .order_by(
-                ExecutionArtifactRecord.created_at.asc(),
-                ExecutionArtifactRecord.id.asc(),
-            )
+        artifacts = sorted(
+            artifact_repo.list_artifacts(task_id=task_id),
+            key=lambda artifact: (artifact.created_at, artifact.id),
         )
-        records = session.execute(stmt).scalars().all()
-        to_delete = records[:-max_count] if max_count > 0 else records
+        to_delete = artifacts[:-max_count] if max_count > 0 else artifacts
 
         deleted = 0
-        for record in to_delete:
-            self._safe_delete(Path(record.path), self._artifacts_root)
-            session.delete(record)
+        for artifact in to_delete:
+            self._safe_delete(Path(artifact.path), self._artifacts_root)
+            artifact_repo.delete_artifact(artifact.id)
             deleted += 1
         return deleted
 
