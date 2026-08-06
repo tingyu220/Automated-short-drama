@@ -101,13 +101,20 @@ class TestPlanSpecServiceIntegration:
                     "2.9": "2.9-番茄-我的剧",
                 }
                 assert spec.material_groups is not None
-                assert spec.material_groups.final_group_count == 3
-                assert spec.material_groups.ad_limit_per_project == 1
+                assert spec.material_groups.final_group_count == 7
+                assert spec.material_groups.ad_limit_per_project == 3
                 assert spec.material_groups.project_count == 3
                 assert spec.expected_project_count == 3
                 assert spec.rule_version == "v1"
                 assert spec.task_name.startswith("番茄#测试我的剧")
                 assert spec.task_name.endswith("-1")
+                normal_ranges = [
+                    rule
+                    for rule in ranges
+                    if not rule.strategy.startswith("TEST_")
+                ]
+                assert MaterialGroupRule().calculate(70, normal_ranges).final_group_count == 6
+                assert MaterialGroupRule().calculate(20, ranges).final_group_count == 7
             finally:
                 session.close()
                 engine.dispose()

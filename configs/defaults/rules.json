@@ -39,6 +39,9 @@
   ],
   "material_rule_ranges": [
     {"key": "n_leq_30", "min_material_count": 0, "max_material_count": 30, "strategy": "BASE_1_COPY_2", "base_group_count": 1, "copy_count": 2, "target_project_count": 3},
-    {"key": "n_30_60", "min_material_count": 31, "max_material_count": 60, "strategy": "BASE_2_COPY_2", "base_group_count": 2, "copy_count": 2, "target_project_count": 3}
+    {"key": "n_30_60", "min_material_count": 31, "max_material_count": 60, "strategy": "BASE_2_COPY_2", "base_group_count": 2, "copy_count": 2, "target_project_count": 3},
+    {"key": "n_61_90", "min_material_count": 61, "max_material_count": 90, "strategy": "BASE_3_COPY_1", "base_group_count": 3, "copy_count": 1, "target_project_count": 3},
+    {"key": "test_lt_20", "min_material_count": 0, "max_material_count": 19, "strategy": "TEST_GROUP_2", "base_group_count": 2, "copy_count": 0, "target_project_count": 0},
+    {"key": "test_ge_20", "min_material_count": 20, "max_material_count": null, "strategy": "TEST_GROUP_3", "base_group_count": 3, "copy_count": 0, "target_project_count": 0}
   ]
 }

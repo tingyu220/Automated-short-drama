@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from backend.domain.plans.plan_spec import MaterialPlan
@@ -17,6 +17,7 @@ PLAN_TYPE_TEST = "测试"
 _IAA_ROLES = {"B1", "B4", "B7", "BX"}
 _TEST_STRATEGY_PREFIX = "TEST_"
 _DEFAULT_GROUP_SIZE_CAP = 30
+_SHANGHAI_TZ = timezone(timedelta(hours=8))
 _NAME_MARKERS = {
     PLAN_TYPE_PAID: "ubr",
     PLAN_TYPE_FREE: "bxr",
@@ -205,6 +206,7 @@ class TaskNameRule:
         marker = _NAME_MARKERS.get(plan_type)
         if marker is None:
             raise ValueError(f"不支持的计划类型: {plan_type}")
+        now = now.astimezone(_SHANGHAI_TZ)
         return (
             f"{platform}#{plan_type}{drama_name}"
             f"{date.strftime('%Y%m%d')}{marker}-"

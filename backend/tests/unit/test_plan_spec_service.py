@@ -211,7 +211,7 @@ class TestTaskNameRule:
             "端付",
         )
 
-        assert name == "番茄#端付我的剧20260807ubr-20260807-101530-1"
+        assert name == "番茄#端付我的剧20260807ubr-20260807-181530-1"
 
     def test_free_name(self) -> None:
         name = TaskNameRule().build(
@@ -222,7 +222,7 @@ class TestTaskNameRule:
             "端免",
         )
 
-        assert name == "番茄#端免我的剧20260807bxr-20260807-101530-1"
+        assert name == "番茄#端免我的剧20260807bxr-20260807-181530-1"
 
     def test_test_name(self) -> None:
         name = TaskNameRule().build(
@@ -233,7 +233,7 @@ class TestTaskNameRule:
             "测试",
         )
 
-        assert name == "剧变#测试短剧B20260807cbo-20260807-101530-1"
+        assert name == "剧变#测试短剧B20260807cbo-20260807-181530-1"
 
     def test_unknown_plan_type_raises(self) -> None:
         with pytest.raises(ValueError):
@@ -306,7 +306,7 @@ class TestPlanSpecBuilder:
         assert spec.expected_project_count == 3
         assert spec.rule_version == "v1"
         assert spec.product_id == "product-1"
-        assert spec.task_name.startswith("番茄#端付我的剧20260807ubr-20260806-")
+        assert spec.task_name.startswith("番茄#端付我的剧20260807ubr-20260807-")
         assert spec.task_name.endswith("-1")
 
     def test_build_iaa_only_uses_free_name(self) -> None:

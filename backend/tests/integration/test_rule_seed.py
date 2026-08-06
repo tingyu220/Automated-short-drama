@@ -36,13 +36,13 @@ class TestSeedDefaultsIntegration:
                 result = seed_rules_from_defaults(session, DEFAULTS_PATH)
                 session.commit()
 
-                assert result.created_rules == 7
+                assert result.created_rules == 10
                 assert result.skipped_rules == 0
                 assert _count_rows(session, "rule_set") == 3
                 assert _count_rows(session, "rule_version") == 3
                 assert _count_rows(session, "rule_parameter") == 7
                 assert _count_rows(session, "template_price_rule") == 2
-                assert _count_rows(session, "material_rule_range") == 2
+                assert _count_rows(session, "material_rule_range") == 5
             finally:
                 session.close()
                 engine.dispose()
@@ -60,12 +60,12 @@ class TestSeedDefaultsIntegration:
                 session.commit()
 
                 assert second.created_rules == 0
-                assert second.skipped_rules == 7
+                assert second.skipped_rules == 10
                 assert _count_rows(session, "rule_set") == 3
                 assert _count_rows(session, "rule_version") == 3
                 assert _count_rows(session, "rule_parameter") == 7
                 assert _count_rows(session, "template_price_rule") == 2
-                assert _count_rows(session, "material_rule_range") == 2
+                assert _count_rows(session, "material_rule_range") == 5
             finally:
                 session.close()
                 engine.dispose()
@@ -103,7 +103,7 @@ class TestAutomationWorkerAutoSeed:
             try:
                 assert _count_rows(session, "rule_set") == 3
                 assert _count_rows(session, "template_price_rule") == 2
-                assert _count_rows(session, "material_rule_range") == 2
+                assert _count_rows(session, "material_rule_range") == 5
             finally:
                 session.close()
                 engine.dispose()
