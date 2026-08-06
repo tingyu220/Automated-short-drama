@@ -101,6 +101,33 @@ class TestRulesApi:
         assert client.post(f"/api/rules/{rule_id}/validate").status_code == 404
         assert client.post(f"/api/rules/{rule_id}/publish").status_code == 404
 
+    def test_save_draft_then_validate_uses_payload(self, client):
+        """保存草稿后校验绑定草稿参数，非法草稿返回非 200。"""
+        rule_sets = client.get("/api/rules").json()
+        rule_id = next(
+            row["id"] for row in rule_sets if row["key"] == "iap_price_2_9"
+        )
+        bad_payload = {
+            "price_rules": [
+                {
+                    "key": "iap_x",
+                    "target_price": 10.0,
+                    "min_price": 0.0,
+                    "max_price": 5.0,
+                }
+            ]
+        }
+
+        saved = client.post(
+            f"/api/rules/{rule_id}/draft",
+            json={"payload": bad_payload},
+        )
+
+        assert saved.status_code == 200
+        assert saved.json()["status"] == RuleVersionStatus.DRAFT
+        validated = client.post(f"/api/rules/{rule_id}/validate")
+        assert validated.status_code in (400, 422)
+
     def test_simulate_price(self, client):
         """价格模拟返回 inputs 与逐候选匹配结果。"""
         response = client.post(

@@ -11,6 +11,7 @@ from backend.application.services.rule_service import (
     list_versions,
     log_change,
     publish_version,
+    save_draft_payload,
     simulate_price,
     update_draft,
     validate_rule,
@@ -306,6 +307,88 @@ class TestValidateRule:
 
         with pytest.raises(NotFoundError):
             validate_rule(repo, self._valid_price_repo(), self._valid_material_repo(), "rs-1")
+
+    def test_validate_uses_draft_payload_instead_of_global_table(self):
+        """校验必须绑定草稿参数，而不是仅校验全局表。"""
+        rule_repo = FakeRuleRepository(
+            rule_sets={"rs-1": _rule_set()},
+            versions={
+                "rv-1": _draft_version(
+                    payload={
+                        "price_rules": [
+                            {
+                                "key": "iap_x",
+                                "target_price": 10.0,
+                                "min_price": 0.0,
+                                "max_price": 5.0,
+                            }
+                        ]
+                    }
+                )
+            },
+        )
+
+        with pytest.raises(ValidationError):
+            validate_rule(
+                rule_repo,
+                FakePriceRepository(),
+                FakeMaterialRepository(),
+                "rs-1",
+            )
+
+    def test_validate_accepts_camel_case_draft_payload(self):
+        """前端 camelCase 草稿参数可直接校验并生成版本。"""
+        rule_repo = FakeRuleRepository(
+            rule_sets={"rs-1": _rule_set()},
+            versions={
+                "rv-1": _draft_version(
+                    payload={
+                        "key": "iap_9_9",
+                        "targetPrice": 9.9,
+                        "minPrice": 8.8,
+                        "maxPrice": 13.8,
+                    }
+                )
+            },
+        )
+
+        version = validate_rule(
+            rule_repo,
+            FakePriceRepository(),
+            FakeMaterialRepository(),
+            "rs-1",
+        )
+
+        assert version.status == RuleVersionStatus.VALIDATING
+        assert version.payload_json == rule_repo.versions["rv-1"].payload_json
+
+
+class TestSaveDraftPayload:
+    """save_draft_payload 单元测试。"""
+
+    def test_updates_existing_draft(self):
+        rule_repo = FakeRuleRepository(
+            rule_sets={"rs-1": _rule_set()},
+            versions={"rv-1": _draft_version()},
+        )
+
+        version = save_draft_payload(
+            rule_repo, "rs-1", {"target_price": 3.5}
+        )
+
+        assert version.id == "rv-1"
+        assert version.payload_json == {"target_price": 3.5}
+
+    def test_creates_draft_when_missing(self):
+        rule_repo = FakeRuleRepository(rule_sets={"rs-1": _rule_set()})
+
+        version = save_draft_payload(
+            rule_repo, "rs-1", {"target_price": 3.5}
+        )
+
+        assert version.status == RuleVersionStatus.DRAFT
+        assert version.payload_json == {"target_price": 3.5}
+        assert version.version == "1"
 
 
 class TestSimulatePrice:

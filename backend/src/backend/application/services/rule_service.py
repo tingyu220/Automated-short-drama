@@ -88,6 +88,37 @@ def update_draft(
     return rule_repo.update_rule_set(rule_set)
 
 
+def save_draft_payload(
+    rule_repo: RuleRepository,
+    rule_set_id: str,
+    payload: dict[str, Any],
+) -> RuleVersion:
+    """保存规则集草稿参数：更新最新 DRAFT 版本，缺失时创建。"""
+    rule_set = rule_repo.get_rule_set(rule_set_id)
+    if rule_set is None:
+        raise NotFoundError(f"规则集不存在: {rule_set_id}")
+    if rule_set.status != RuleStatus.DRAFT:
+        raise ConflictError(
+            f"规则集 {rule_set_id} 状态为 {rule_set.status}，仅 DRAFT 可编辑"
+        )
+
+    versions = rule_repo.list_rule_versions(rule_set_id)
+    drafts = [v for v in versions if v.status == RuleVersionStatus.DRAFT]
+    if drafts:
+        latest = max(drafts, key=_version_sort_key)
+        latest.payload_json = dict(payload)
+        return rule_repo.update_rule_version(latest)
+
+    version = RuleVersion(
+        id=str(uuid.uuid4()),
+        rule_set_id=rule_set_id,
+        version=_next_version(versions),
+        payload_json=dict(payload),
+        status=RuleVersionStatus.DRAFT,
+    )
+    return rule_repo.add_rule_version(version)
+
+
 def validate_rule(
     rule_repo: RuleRepository,
     price_repo: PriceRuleRepository,
@@ -105,8 +136,11 @@ def validate_rule(
         raise NotFoundError(f"规则集 {rule_set_id} 没有 DRAFT 版本可校验")
     latest_draft = max(drafts, key=_version_sort_key)
 
-    errors = _validate_price_rules(price_repo.list_template_price_rules())
-    errors.extend(_validate_material_rules(material_repo.list_material_rule_ranges()))
+    errors = _validate_payload_draft(latest_draft.payload_json) or []
+    errors.extend(_validate_price_rules(price_repo.list_template_price_rules()))
+    errors.extend(
+        _validate_material_rules(material_repo.list_material_rule_ranges())
+    )
     if errors:
         raise ValidationError("规则校验失败", details={"errors": errors})
 
@@ -118,6 +152,115 @@ def validate_rule(
         status=RuleVersionStatus.VALIDATING,
     )
     return rule_repo.add_rule_version(version)
+
+
+def _validate_payload_draft(payload: dict[str, Any]) -> list[str] | None:
+    """校验草稿参数；草稿不含规则数据时返回 None 交给全局表校验。"""
+    if not isinstance(payload, dict):
+        return ["草稿 payload 必须是对象"]
+
+    target = _pick(payload, "target_price", "targetPrice")
+    minimum = _pick(payload, "min_price", "minPrice")
+    maximum = _pick(payload, "max_price", "maxPrice")
+    if (
+        target is not None
+        and minimum is not None
+        and maximum is not None
+    ):
+        return _validate_price_items([payload])
+
+    items = payload.get("price_rules") or payload.get("template_price_rules")
+    if items is not None:
+        if not isinstance(items, list):
+            return ["price_rules 必须是列表"]
+        return _validate_price_items(items)
+
+    ranges = payload.get("material_ranges") or payload.get("ranges")
+    if ranges is not None:
+        if not isinstance(ranges, list):
+            return ["material_ranges 必须是列表"]
+        return _validate_material_items(ranges)
+
+    return None
+
+
+def _validate_price_items(items: list[dict]) -> list[str]:
+    """校验草稿内价格规则项。"""
+    errors: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            errors.append("价格规则项必须是对象")
+            continue
+        target = _pick(item, "target_price", "targetPrice")
+        minimum = _pick(item, "min_price", "minPrice")
+        maximum = _pick(item, "max_price", "maxPrice")
+        if not all(
+            isinstance(v, (int, float)) and math.isfinite(v)
+            for v in (target, minimum, maximum)
+        ):
+            errors.append(f"价格规则 {_pick(item, 'key', 'id', '')} 含非数值")
+            continue
+        if minimum < 0 or maximum <= minimum:
+            errors.append(
+                f"价格规则 {_pick(item, 'key', 'id', '')} 区间非法: "
+                f"min={minimum}, max={maximum}"
+            )
+            continue
+        if not minimum <= target <= maximum:
+            errors.append(
+                f"价格规则 {_pick(item, 'key', 'id', '')} 目标价超出区间: "
+                f"target={target}"
+            )
+    return errors
+
+
+def _validate_material_items(items: list[dict]) -> list[str]:
+    """校验草稿内素材区间项。"""
+    errors: list[str] = []
+    normalized: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            errors.append("素材区间项必须是对象")
+            continue
+        minimum = _pick(item, "min_material_count", "min")
+        maximum = _pick(item, "max_material_count", "max")
+        strategy = str(_pick(item, "strategy", "") or "")
+        if (
+            not isinstance(minimum, int)
+            or (maximum is not None and not isinstance(maximum, int))
+            or (maximum is not None and minimum >= maximum)
+        ):
+            errors.append(f"素材区间 {_pick(item, 'key', 'id', '')} 非法")
+            continue
+        normalized.append(
+            {
+                "key": str(_pick(item, "key", "id", "")),
+                "min": minimum,
+                "max": maximum,
+                "strategy": strategy,
+            }
+        )
+
+    by_strategy: dict[str, list[dict]] = {}
+    for item in normalized:
+        by_strategy.setdefault(item["strategy"], []).append(item)
+    for strategy, ranges in by_strategy.items():
+        ordered = sorted(ranges, key=lambda r: r["min"])
+        for prev, current in zip(ordered, ordered[1:]):
+            if prev["max"] is None or current["min"] <= prev["max"]:
+                errors.append(
+                    f"素材区间策略 {strategy} 重叠: "
+                    f"{prev['key']} 与 {current['key']}"
+                )
+    return errors
+
+
+def _pick(item: dict, *names: str) -> Any:
+    """按多个候选键取第一个存在的值。"""
+    for name in names:
+        if name in item:
+            return item[name]
+    return None
 
 
 def simulate_price(

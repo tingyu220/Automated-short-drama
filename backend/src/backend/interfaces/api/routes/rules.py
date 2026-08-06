@@ -37,6 +37,12 @@ class PriceSimulationBody(BaseModel):
     candidates: list[float]
 
 
+class SaveDraftBody(BaseModel):
+    """保存规则草稿请求体。"""
+
+    payload: dict
+
+
 def _require_rule_set(
     db: Session, rule_set_id: str
 ) -> SqlAlchemyRuleRepository:
@@ -70,6 +76,20 @@ def validate_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
     material_repo = SqlAlchemyMaterialRuleRepository(db)
     version = rule_service.validate_rule(
         rule_repo, price_repo, material_repo, rule_set_id
+    )
+    return RuleVersionView.model_validate(version)
+
+
+@router.post("/rules/{rule_set_id}/draft", response_model=RuleVersionView)
+def save_rule_draft(
+    rule_set_id: str,
+    body: SaveDraftBody,
+    db: Session = Depends(get_db),
+):
+    """保存规则集草稿参数到最新 DRAFT 版本。"""
+    rule_repo = _require_rule_set(db, rule_set_id)
+    version = rule_service.save_draft_payload(
+        rule_repo, rule_set_id, body.payload
     )
     return RuleVersionView.model_validate(version)
 
