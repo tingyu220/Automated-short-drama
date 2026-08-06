@@ -21,6 +21,7 @@ SELECTORS = {
     "confirm_button": "#confirm-button",
     "link_input": "#link-input",
     "template_item": ".template-item",
+    "template_title": ".template-title",
     "tier_price": ".tier-price",
     "page_order": ".page-order",
 }
@@ -155,6 +156,20 @@ class TestFreeEntrySearch:
             for name, expression, _ in page.calls
         )
 
+    def test_read_link_returns_empty_when_clipboard_evaluate_is_none(self):
+        page = FakePage()
+        page.evaluate_result = None
+        page.set_value(SELECTORS["link_input"], "")
+        adapter = make_adapter(page=page, dry_run=False)
+
+        link = adapter.extract_iaa_link("剧A", 40, 1)
+
+        assert link.promotion_url == ""
+        assert any(
+            name == "evaluate" and "readText" in expression[0]
+            for name, expression, _ in page.calls
+        )
+
 
 class TestPaidEntry:
     """付费入口模板扫描与链接生成验证."""
@@ -162,8 +177,8 @@ class TestPaidEntry:
     def test_scan_iap_templates_returns_price_and_page_order(self):
         page = FakePage()
         page.locator(SELECTORS["template_item"]).evaluate_all_rows = [
-            ["2.9", "1"],
-            ["9.9", "2"],
+            ["2.9 档模板", "2.9", "1"],
+            ["9.9 档模板", "9.9", "2"],
         ]
         adapter = make_adapter(page=page, dry_run=False)
 
@@ -171,16 +186,16 @@ class TestPaidEntry:
 
         assert templates == [
             TemplateInfo(
-                template_id="",
+                template_id="2.9 档模板",
                 drama_name="剧A",
-                title="",
+                title="2.9 档模板",
                 price=2.9,
                 page_order=1,
             ),
             TemplateInfo(
-                template_id="",
+                template_id="9.9 档模板",
                 drama_name="剧A",
-                title="",
+                title="9.9 档模板",
                 price=9.9,
                 page_order=2,
             ),
@@ -190,8 +205,25 @@ class TestPaidEntry:
         expression = item_locator.calls[0][1][0]
         assert "querySelector" in expression
         arg = item_locator.calls[0][2]["arg"]
+        assert arg["template_title"] == SELECTORS["template_title"]
         assert arg["tier_price"] == SELECTORS["tier_price"]
         assert arg["page_order"] == SELECTORS["page_order"]
+
+    def test_scan_then_generate_iap_link_closed_loop(self):
+        page = FakePage()
+        page.locator(SELECTORS["template_item"]).evaluate_all_rows = [
+            ["9.9 档模板", "9.9", "2"],
+        ]
+        page.set_value(SELECTORS["link_input"], "https://tomato.example/iap/9-9")
+        adapter = make_adapter(page=page, dry_run=False)
+
+        templates = adapter.scan_iap_templates("剧A")
+        link = adapter.generate_iap_link("剧A", templates[0])
+
+        assert templates[0].title == "9.9 档模板"
+        assert templates[0].template_id == "9.9 档模板"
+        assert page.text_locators["9.9 档模板"].calls == [("click", (), {})]
+        assert link.promotion_url == "https://tomato.example/iap/9-9"
 
     def test_generate_iap_link_clicks_template_and_reads_link(self):
         page = FakePage()
@@ -216,6 +248,27 @@ class TestPaidEntry:
         assert page.text_locators["9.9 档模板"].calls == [("click", (), {})]
         assert page.locators[SELECTORS["generate_button"]].calls == [("click", (), {})]
         assert page.locators[SELECTORS["link_input"]].calls == [("input_value", (), {})]
+
+    def test_generate_iap_link_clipboard_none_returns_empty(self):
+        page = FakePage()
+        page.evaluate_result = None
+        page.set_value(SELECTORS["link_input"], "")
+        adapter = make_adapter(page=page, dry_run=False)
+        template = TemplateInfo(
+            template_id="tpl-9-9",
+            drama_name="剧A",
+            title="9.9 档模板",
+            price=9.9,
+            page_order=2,
+        )
+
+        link = adapter.generate_iap_link("剧A", template)
+
+        assert link.promotion_url == ""
+        assert any(
+            name == "evaluate" and "readText" in expression[0]
+            for name, expression, _ in page.calls
+        )
 
 
 class TestDryRun:

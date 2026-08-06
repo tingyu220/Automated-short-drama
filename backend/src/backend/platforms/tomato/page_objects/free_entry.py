@@ -35,4 +35,5 @@ class FreeEntryPage:
         url = link_input.input_value()
         if url:
             return url
-        return str(self._page.evaluate("navigator.clipboard.readText()"))
+        clipboard = self._page.evaluate("navigator.clipboard.readText()")
+        return clipboard if isinstance(clipboard, str) else ""

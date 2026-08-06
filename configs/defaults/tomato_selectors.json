@@ -9,6 +9,7 @@
   "confirm_button": "button:has-text('确认')",
   "link_input": "input[readonly][value*='http']",
   "template_item": "[data-testid=template-item]",
+  "template_title": ".template-title",
   "tier_price": ".tier-price",
   "page_order": ".page-order"
 }

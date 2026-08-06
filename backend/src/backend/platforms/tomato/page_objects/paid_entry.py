@@ -18,36 +18,43 @@ class PaidEntryPage:
         self._page.goto(self._selectors["login_url"])
 
     def scan_templates(self, drama_name: str) -> list[TemplateInfo]:
-        """扫描全部模板项，读取档位价格与页面顺序."""
+        """扫描全部模板项，读取模板标题、档位价格与页面顺序."""
         self._goto()
         rows = self._page.locator(self._selectors["template_item"]).evaluate_all(
             """
             (items, selectors) => items.map(item => {
+              const title = item.querySelector(selectors.template_title);
               const price = item.querySelector(selectors.tier_price);
               const order = item.querySelector(selectors.page_order);
-              return [price ? price.textContent : "", order ? order.textContent : ""];
+              return [
+                title ? title.textContent.trim() : "",
+                price ? price.textContent : "",
+                order ? order.textContent : ""
+              ];
             })
             """,
             {
+                "template_title": self._selectors["template_title"],
                 "tier_price": self._selectors["tier_price"],
                 "page_order": self._selectors["page_order"],
             },
         )
         return [
             TemplateInfo(
-                template_id="",
+                template_id=title_text,
                 drama_name=drama_name,
-                title="",
+                title=title_text,
                 price=_parse_float(price_text),
                 page_order=_parse_int(order_text),
             )
-            for price_text, order_text in rows
+            for title_text, price_text, order_text in rows
         ]
 
     def generate_link(self, template: TemplateInfo) -> str:
         """点击目标模板并生成推广链接."""
         self._goto()
-        self._page.get_by_text(template.title).click()
+        template_title = template.title or template.template_id
+        self._page.get_by_text(template_title).click()
         self._page.locator(self._selectors["generate_button"]).click()
         return _read_link(self._page, self._selectors)
 
@@ -58,7 +65,8 @@ def _read_link(page: Any, selectors: dict[str, str]) -> str:
     url = link_input.input_value()
     if url:
         return url
-    return str(page.evaluate("navigator.clipboard.readText()"))
+    clipboard = page.evaluate("navigator.clipboard.readText()")
+    return clipboard if isinstance(clipboard, str) else ""
 
 
 def _parse_float(text: str) -> float:
