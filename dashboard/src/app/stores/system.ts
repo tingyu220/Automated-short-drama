@@ -4,7 +4,7 @@ import { ref } from "vue"
 export const useSystemStore = defineStore("system", () => {
   const environment = ref<string>("development")
   const allowFinalSubmit = ref<boolean>(false)
-  const workerHeartbeat = ref<string | null>(null)
+  const workerHeartbeat = ref<string | boolean | null>(null)
   const database = ref<string | null>(null)
   const config = ref<Record<string, unknown> | null>(null)
 

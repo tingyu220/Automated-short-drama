@@ -96,6 +96,8 @@ export interface QueueItemView {
   lease_until: string | null
   attempt_count: number
   next_run_at: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export interface PromotionLink {

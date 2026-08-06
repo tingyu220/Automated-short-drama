@@ -13,6 +13,8 @@ export interface QueueItem {
   lease_until: string | null
   attempt_count: number
   next_run_at: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export const useQueueStore = defineStore("queue", () => {

@@ -181,7 +181,19 @@ describe("usePlanStore", () => {
         dramaName: "剧A",
         platform: "番茄",
         status: "COMPLETED",
-        completedAt: "2026-08-06T10:00:00"
+        completedAt: "2026-08-06T10:00:00",
+        taskName: "—",
+        planType: "—",
+        accountCount: "—",
+        cidCount: "—",
+        materialCount: "—",
+        materialGroupCount: "—",
+        expectedProjectCount: "—",
+        ruleVersion: "—",
+        validationStatus: "—",
+        submitStatus: "—",
+        externalTaskId: "—",
+        createdAt: "—"
       }
     ])
   })
