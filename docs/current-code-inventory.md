@@ -49,7 +49,7 @@
 
 | 脚本路径 | 作用 | 新系统映射 | 复用分类 |
 |---|---|---|---|
-| `tasks/01-iam-2359/fanqie_batch_verify.py` | 按日期批量验证番茄发布状态，结果私发负责人（读飞书表、判定可投放/不可投放） | 番茄发布状态批量验证 + 飞书回填流程参考 | 可直接包装复用 |
+| `tasks/01-iam-2359/fanqie_batch_verify.py` | 按日期批量验证番茄发布状态，结果私发负责人（读飞书表、判定可投放/不可投放） | 番茄发布状态批量验证 + 飞书回填流程参考 | 可直接包装复用（含隐式飞书依赖，包装时需先解耦） |
 | `tasks/08-partial-failed/partial_failed_monitor.py` | 投放系统巨量引擎 V2 任务页「部分失败」监控：抓取任务、6 类不重试规则、自动重试、飞书推送去重 | `DeliverySystemAdapter` 任务列表/详情/重试页面选择器与状态轮询核心参考 | 可直接包装复用 |
 | `tasks/06-tjhaozew-monitor/tjhaozew_monitor.js` | 巨量引擎全局看板高速消耗低回收监控：报表阈值、分时 ROI、防刷屏推送 | 巨量报表页面结构参考；新系统 V1 不吸收监控，仅保留页面线索 | 仅页面/结构参考 |
 | `tasks/07-tjhaozew-watchdog/tjhaozew_watchdog.py` | 巨量监控 watchdog：日志间隔、sandbox、网络健康检查与告警 | 新系统监控健康检查设计参考 | 仅页面/结构参考 |

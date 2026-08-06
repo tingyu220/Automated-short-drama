@@ -313,6 +313,7 @@ Commit Message：`docs: 完成Phase 0设计落盘`（提交前向用户确认）
 - [ ] 配置草稿/发布/模拟 API
 
 **Frontend:** 按 `docs/plans/frontend-ui-development-plan.md` 的 UI-01 到 UI-08 执行。
+前端 UI 阶段 UI-01~UI-08 在此阶段按 docs/plans/frontend-ui-development-plan.md 执行。
 
 **Tests:** API 契约测试 + Vitest 组件/页面测试 + 构建验证。
 

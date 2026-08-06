@@ -1,5 +1,7 @@
 # 短剧投放全流程自动化工作台 前端 UI 开发方案 V1.0
 
+> 生成时间：2026-08-06 | 版本：V1.0
+>
 > 独立子计划，关联主设计文档：`docs/superpowers/specs/2026-08-06-short-drama-delivery-design.md`
 
 ## 1. 设计定位
