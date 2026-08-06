@@ -287,8 +287,17 @@ class TestProductionValidationRunner:
 class TestProductionValidationCli:
     """CLI 的 Mock 阶梯与真实模式双开关。"""
 
-    def test_mock_single_outputs_json_and_exits_zero(self, capsys) -> None:
-        code = cli.main(["--ladder", "single", "--plan-type", "test"])
+    def test_mock_single_outputs_json_and_exits_zero(self, tmp_path, capsys) -> None:
+        code = cli.main(
+            [
+                "--ladder",
+                "single",
+                "--plan-type",
+                "test",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
 
         assert code == 0
         payload = json.loads(capsys.readouterr().out)
@@ -299,32 +308,68 @@ class TestProductionValidationCli:
         assert payload["steps"][0]["passed"] is True
         assert payload["steps"][0]["status"] == "COMPLETED"
 
-    def test_mock_ten_plan_type_both(self, capsys) -> None:
-        code = cli.main(["--ladder", "ten", "--plan-type", "both"])
+    def test_mock_ten_plan_type_both(self, tmp_path, capsys) -> None:
+        code = cli.main(
+            [
+                "--ladder",
+                "ten",
+                "--plan-type",
+                "both",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
 
         assert code == 0
         payload = json.loads(capsys.readouterr().out)
         assert len(payload["steps"]) == 10
         assert all(step["passed"] for step in payload["steps"])
 
-    def test_real_mode_rejected_without_env(self, monkeypatch, capsys) -> None:
+    def test_real_mode_rejected_without_env(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
         monkeypatch.delenv("ALLOW_FINAL_SUBMIT", raising=False)
 
-        code = cli.main(["--real", "--ladder", "single"])
+        code = cli.main(
+            [
+                "--real",
+                "--ladder",
+                "single",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
 
         assert code == 1
         assert "ALLOW_FINAL_SUBMIT" in capsys.readouterr().err
 
-    def test_real_mode_rejected_with_false_env(self, monkeypatch, capsys) -> None:
+    def test_real_mode_rejected_with_false_env(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
         monkeypatch.setenv("ALLOW_FINAL_SUBMIT", "false")
 
-        code = cli.main(["--real", "--ladder", "single"])
+        code = cli.main(
+            [
+                "--real",
+                "--ladder",
+                "single",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
 
         assert code == 1
 
     def test_real_mode_proceeds_with_both_switches(
         self,
         monkeypatch,
+        tmp_path,
         capsys,
     ) -> None:
         monkeypatch.setenv("ALLOW_FINAL_SUBMIT", "true")
@@ -338,7 +383,17 @@ class TestProductionValidationCli:
 
         monkeypatch.setattr(cli, "build_adapters", fake_build)
 
-        code = cli.main(["--real", "--ladder", "single", "--plan-type", "test"])
+        code = cli.main(
+            [
+                "--real",
+                "--ladder",
+                "single",
+                "--plan-type",
+                "test",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
 
         assert code == 0
         payload = json.loads(capsys.readouterr().out)

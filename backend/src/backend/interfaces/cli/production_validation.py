@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from backend.application.services import submit_guard
 from backend.application.services.plan_rules import (
@@ -17,6 +18,9 @@ from backend.application.services.plan_rules import (
 )
 from backend.application.services.plan_spec_service import PlanSpecBuilder
 from backend.application.services.plan_validation_service import PlanValidationService
+from backend.application.services.production_report_service import (
+    ProductionReportService,
+)
 from backend.application.services.production_validation_service import (
     ProductionStep,
     ProductionValidationRunner,
@@ -32,6 +36,8 @@ from backend.domain.tasks.drama_task import DramaTask
 from backend.infrastructure.config.settings import Settings
 
 ALLOW_FINAL_SUBMIT_ENV = "ALLOW_FINAL_SUBMIT"
+PROJECT_ROOT = Path(__file__).resolve().parents[4].parent
+DEFAULT_REPORT_DIR = "data/production-validation"
 LADDER_SIZES = {"single": 1, "three": 3, "five": 5, "ten": 10}
 PLAN_TYPES = ("test", "free", "paid_9_9", "paid_2_9", "both")
 ROLE_DELIVERY_TYPES = {
@@ -126,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="真实模式（需环境变量 ALLOW_FINAL_SUBMIT=true 同时开启）",
     )
+    parser.add_argument(
+        "--report-dir",
+        default=None,
+        help="Markdown 报告输出目录",
+    )
     args = parser.parse_args(argv)
 
     if args.real and not _final_submit_enabled():
@@ -140,13 +151,47 @@ def main(argv: list[str] | None = None) -> int:
         _emit_error(f"{exc.message} (code={exc.code})")
         return 1
 
-    payload = _result_payload(mode, args.ladder, args.plan_type, results)
+    report_dir = _resolve_report_dir(args.report_dir)
+    report_path = report_dir / f"{args.ladder}-{args.plan_type}-latest.md"
+    try:
+        report_service = ProductionReportService()
+        report = report_service.generate(
+            results,
+            {
+                "mode": mode,
+                "ladder": args.ladder,
+                "plan_type": args.plan_type,
+            },
+        )
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            report_service.render_markdown(report),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        _emit_report_error(exc)
+        return 1
+
+    payload = _result_payload(
+        mode,
+        args.ladder,
+        args.plan_type,
+        results,
+        report_path=str(report_path),
+    )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if payload["passed"] else 1
 
 
 def _final_submit_enabled() -> bool:
     return os.getenv(ALLOW_FINAL_SUBMIT_ENV, "").strip().lower() == "true"
+
+
+def _resolve_report_dir(value: str | None) -> Path:
+    """解析报告目录：未传时默认项目根 data/production-validation。"""
+    if value is None:
+        return (PROJECT_ROOT / DEFAULT_REPORT_DIR).resolve()
+    return Path(value).resolve()
 
 
 def _build_pipeline(
@@ -298,11 +343,13 @@ def _result_payload(
     ladder: str,
     plan_type: str,
     results,
+    report_path: str,
 ) -> dict:
     return {
         "mode": mode,
         "ladder": ladder,
         "plan_type": plan_type,
+        "report_path": report_path,
         "steps": [
             {
                 "step_name": result.step_name,
@@ -324,6 +371,13 @@ def _result_payload(
 def _emit_error(message: str) -> None:
     print(
         json.dumps({"error": message}, ensure_ascii=False),
+        file=sys.stderr,
+    )
+
+
+def _emit_report_error(exc: Exception) -> None:
+    print(
+        json.dumps({"report_error": str(exc)}, ensure_ascii=False),
         file=sys.stderr,
     )
 
