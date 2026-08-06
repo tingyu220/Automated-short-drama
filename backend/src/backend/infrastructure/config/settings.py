@@ -11,11 +11,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _resolve_project_root() -> Path:
-    """向上查找 .git 目录定位项目根。"""
-    start = Path(__file__).resolve().parents[5]
-    root = start
+    """从当前模块文件向上查找项目根标记（AGENTS.md / .git）。
+
+    仓库根放置 AGENTS.md 与 .git，优先匹配 AGENTS.md。
+    """
+    root = Path(__file__).resolve().parent
+    _markers = ("AGENTS.md", ".git")
     while root.parent != root:
-        if (root / ".git").exists():
+        if any((root / m).exists() for m in _markers):
             return root
         root = root.parent
     return Path.cwd().resolve()

@@ -25,7 +25,6 @@ class _SanitizingFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
 
-        # 合并 extra 字段，排除 LogRecord 内置属性
         _BUILTIN_ATTRS = {
             "args", "asctime", "created", "exc_info", "exc_text",
             "filename", "funcName", "levelname", "levelno",
@@ -58,21 +57,14 @@ def get_logger(name: str) -> logging.Logger:
     """获取命名 logger，可重复调用不重复添加 handler。"""
     global _HANDLER_INSTALLED
 
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-
     if not _HANDLER_INSTALLED:
         _HANDLER_INSTALLED = True
         handler = logging.StreamHandler()
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(_SanitizingFormatter())
 
-        # 清除根 logger 的默认 handler，避免重复输出
         root = logging.getLogger()
-        for h in list(root.handlers):
-            root.removeHandler(h)
+        root.addHandler(handler)
+        root.setLevel(logging.DEBUG)
 
-        logger.addHandler(handler)
-        logger.propagate = False
-
-    return logger
+    return logging.getLogger(name)

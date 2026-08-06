@@ -18,6 +18,9 @@ class TestSanitization:
         """每个测试前重置 handler 状态。"""
         import backend.infrastructure.logging.logger as mod
         mod._HANDLER_INSTALLED = False
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
 
     def test_password_is_masked(self):
         """包含 password 键的值应被替换为 ***。"""
@@ -62,12 +65,54 @@ class TestIdempotent:
         """每个测试前重置 handler 状态。"""
         import backend.infrastructure.logging.logger as mod
         mod._HANDLER_INSTALLED = False
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
 
     def test_repeated_calls_no_dup_handlers(self):
         """多次调用 get_logger 不会重复添加 handler。"""
-        logger1 = get_logger("test_idempotent")
-        logger2 = get_logger("test_idempotent")
-        assert logger1 is logger2
-        handlers_before = len(logger1.handlers)
-        get_logger("another")
-        assert len(logger1.handlers) == handlers_before
+        get_logger("test_idempotent_a")
+        root = logging.getLogger()
+        handlers_after_first = len(root.handlers)
+        get_logger("test_idempotent_b")
+        assert len(root.handlers) == handlers_after_first
+
+
+class TestEndToEnd:
+    """端到端测试：两个不相关的 logger 都能输出。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_handlers(self):
+        """每个测试前重置 handler 状态。"""
+        import backend.infrastructure.logging.logger as mod
+        mod._HANDLER_INSTALLED = False
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
+
+    def test_two_unrelated_loggers_both_output(self):
+        """module.a 和 module.b 两个不相关的 logger 都能通过根 handler 输出。"""
+        stream = StringIO()
+        import backend.infrastructure.logging.logger as mod
+        mod._HANDLER_INSTALLED = False
+
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        from backend.infrastructure.logging.logger import _SanitizingFormatter
+        handler.setFormatter(_SanitizingFormatter())
+        root.addHandler(handler)
+
+        log_a = get_logger("module.a")
+        log_b = get_logger("module.b")
+        log_a.info("消息 A")
+        log_b.info("消息 B")
+
+        lines = stream.getvalue().strip().split("\n")
+        records = [json.loads(line) for line in lines]
+        loggers = {r["logger"] for r in records}
+        assert "module.a" in loggers
+        assert "module.b" in loggers
+        assert len(records) == 2
