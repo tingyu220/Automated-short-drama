@@ -4,7 +4,7 @@
 
 ## 本地启动
 
-当前处于 Phase 0 仓库初始化阶段，一键启动脚本将在 Phase 1 提供。
+Phase 0 设计文档已落盘，一键启动脚本将在 Phase 1 提供。
 
 预期运行形态：
 
@@ -17,6 +17,8 @@
 - 设计文档：`docs/superpowers/specs/2026-08-06-short-drama-delivery-design.md`
 - 实施计划：`docs/superpowers/plans/2026-08-06-short-drama-delivery-implementation.md`
 - 前端 UI 子计划：`docs/plans/frontend-ui-development-plan.md`
+- 系统架构：`docs/architecture/system-architecture.md`
+- 全流程：`docs/workflows/full-workflow.md`
+- 业务规则：`docs/rules/business-rules.md`
+- 现有代码资产清单：`docs/current-code-inventory.md`
 - 文档总览：`docs/README.md`
-
-> 架构、全流程、业务规则等专项文档将在 Phase 0 后续任务落盘，落盘后同步补充到 `docs/README.md`。

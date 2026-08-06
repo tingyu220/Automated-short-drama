@@ -6,7 +6,7 @@
 
 ## 2. 总体架构
 
-系统采用模块化单体：一个 Python 后端进程内同时运行 Control Server 与 Automation Worker，共享同一套 Application、Domain、Platforms、Infrastructure 模块；前端为 Vue 3 单页应用，通过 FastAPI 接口访问。
+系统采用模块化单体：后端由 Control Server 与 Automation Worker 组成（V1 固定单 Worker，启动脚本按开发/正式模式分别拉起），共享同一套 Application、Domain、Platforms、Infrastructure 模块；前端为 Vue 3 单页应用，通过 FastAPI 接口访问。
 
 ```text
 interfaces/api + interfaces/cli + interfaces/agent
@@ -86,7 +86,7 @@ Application 不包含平台操作细节，也不直接访问数据库或浏览�
 Control Server 是常驻的 FastAPI 进程，职责：
 
 - 提供 Dashboard 所需的查询与命令 API；
-- 启动时立即扫描当天任务（按 `sheet_row + drama_name` 去重），每小时增量扫描；
+- 每天 00:00 全量扫描当天任务，启动时立即扫描一次（按 `sheet_row + drama_name` 去重），每小时增量扫描；
 - 任务到投放时间后入队；
 - 提供规则与配置中心的编辑、校验、发布接口；
 - 提供手动入队、暂停/恢复、失败重试、人工处理入口；
@@ -97,7 +97,7 @@ Control Server 通过 Application 的 `commands` 与 `queries` 访问系统，�
 
 ## 5. Automation Worker
 
-Automation Worker 是同一进程内的后台执行体，V1 固定单 Worker：
+Automation Worker 是独立启动的后台执行体，V1 固定单 Worker：
 
 - 从队列领取任务，建立租约并持续心跳；
 - 按平台分流执行端到端流程：番茄链接提取与回填、投放系统资源与推广配置、巨量产品库建产品、PlanSpec 生成与提交保护、状态轮询与 M 写入；

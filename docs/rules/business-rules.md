@@ -90,7 +90,7 @@ IAP 分配组合：
 - `N > 90`：均匀分配，每组 `<= 30`，组数取不小于 `ceil(N/30)` 的最小 3 的倍数。
 - 常规计划：`ad_limit_per_project = 最终组数 / 3`，`expected_project_count = 3`。
 
-测试户素材分组（G 为测试素材组数）：
+测试户素材分组（N 为测试素材条数，G 为测试素材组数）：
 
 - `N < 20`：每组 2 条；`N >= 20`：每组 3 条；不复制。
 - `ad_limit = min(10, ceil(G/3))`，`project_count = ceil(G / ad_limit)`。
