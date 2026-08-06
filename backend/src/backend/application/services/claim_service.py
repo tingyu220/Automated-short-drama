@@ -39,6 +39,9 @@ def release_claimed(
         ConflictError: claimed_by 与 worker_id 不匹配。
     """
     repo = SqlAlchemyQueueRepository(session)
+    if repo.release_claimed(queue_item_id, worker_id):
+        return True
+
     item = repo.get(queue_item_id)
     if item is None:
         raise NotFoundError(f"QueueItem {queue_item_id} not found")
@@ -47,9 +50,6 @@ def release_claimed(
             f"QueueItem {queue_item_id} 由 {item.claimed_by} 认领，"
             f"而非 {worker_id}"
         )
-
-    item.state = QueueState.QUEUED
-    item.claimed_by = None
-    item.lease_until = None
-    repo.update(item)
-    return True
+    raise ConflictError(
+        f"QueueItem {queue_item_id} 状态 {item.state} 不允许释放"
+    )

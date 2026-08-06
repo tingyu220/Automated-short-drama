@@ -1,6 +1,7 @@
 """recovery_service 单元测试 —— 使用 fake repository."""
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -11,6 +12,7 @@ from backend.application.services.recovery_service import (
 )
 from backend.domain.errors.domain_error import ConflictError
 from backend.domain.queue.queue_item import QueueItem, QueueState
+from backend.domain.queue.state_machine import QueueStateMachine
 from backend.infrastructure.database.repositories.queue_repository import (
     SqlAlchemyQueueRepository,
 )
@@ -60,6 +62,34 @@ class FakeQueueRepository(SqlAlchemyQueueRepository):
     def find_expired(self, now: datetime) -> list[QueueItem]:
         """返回预设的过期项列表."""
         return list(self._expired_items)
+
+    def recover_expired(
+        self,
+        now: datetime,
+        max_attempts: int,
+    ) -> tuple[list[QueueItem], list[QueueItem]]:
+        """模拟条件原子恢复，语义与旧循环一致。"""
+        requeued: list[QueueItem] = []
+        manual_review: list[QueueItem] = []
+        for source in self._expired_items:
+            item = deepcopy(source)
+            item.attempt_count += 1
+            if item.attempt_count <= max_attempts:
+                item.state = QueueStateMachine.transition(
+                    item.state, QueueState.QUEUED
+                )
+                item.claimed_by = None
+                item.lease_until = None
+                requeued.append(item)
+            else:
+                item.state = QueueStateMachine.transition(
+                    item.state, QueueState.MANUAL_REVIEW
+                )
+                item.claimed_by = None
+                item.lease_until = None
+                manual_review.append(item)
+            self._items[item.id] = item
+        return requeued, manual_review
 
 
 def make_item(

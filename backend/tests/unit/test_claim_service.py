@@ -62,6 +62,22 @@ class FakeQueueRepository(SqlAlchemyQueueRepository):
         self._claim_next_calls.append((worker_id, lease_seconds, now))
         return getattr(self, "_next_item", None)
 
+    def release_claimed(self, item_id: str, worker_id: str) -> bool:
+        """模拟条件原子释放。"""
+        item = self._items.get(item_id)
+        if (
+            item is None
+            or item.claimed_by != worker_id
+            or item.state
+            not in (QueueState.CLAIMED, QueueState.RUNNING)
+        ):
+            return False
+        item.state = QueueState.QUEUED
+        item.claimed_by = None
+        item.lease_until = None
+        self._items[item.id] = item
+        return True
+
 
 @pytest.fixture
 def fake_repo() -> FakeQueueRepository:

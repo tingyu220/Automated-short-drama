@@ -143,6 +143,87 @@ class SqlAlchemyQueueRepository:
         records = self._session.execute(stmt).scalars().all()
         return [self._to_domain(r) for r in records]
 
+    def release_claimed(self, item_id: str, worker_id: str) -> bool:
+        """条件原子释放：仅当 claimed_by 匹配且状态为 CLAIMED/RUNNING 时置回 QUEUED。"""
+        stmt = (
+            update(QueueItemRecord)
+            .where(
+                QueueItemRecord.id == item_id,
+                QueueItemRecord.claimed_by == worker_id,
+                QueueItemRecord.state.in_(
+                    [QueueState.CLAIMED, QueueState.RUNNING]
+                ),
+            )
+            .values(
+                state=QueueState.QUEUED,
+                claimed_by=None,
+                lease_until=None,
+            )
+            .returning(QueueItemRecord.id)
+        )
+        return self._session.execute(stmt).scalar_one_or_none() is not None
+
+    def recover_expired(
+        self,
+        now: datetime,
+        max_attempts: int,
+    ) -> tuple[list[QueueItem], list[QueueItem]]:
+        """条件原子恢复过期项：未超重试回到 QUEUED，否则转 MANUAL_REVIEW。"""
+        expired_where = (
+            QueueItemRecord.state.in_(
+                [QueueState.CLAIMED, QueueState.RUNNING]
+            ),
+            QueueItemRecord.lease_until < now,
+        )
+        requeued_ids: list[str] = []
+        manual_ids: list[str] = []
+
+        requeue_stmt = (
+            update(QueueItemRecord)
+            .where(
+                *expired_where,
+                QueueItemRecord.attempt_count + 1 <= max_attempts,
+            )
+            .values(
+                state=QueueState.QUEUED,
+                attempt_count=QueueItemRecord.attempt_count + 1,
+                claimed_by=None,
+                lease_until=None,
+            )
+            .returning(QueueItemRecord.id)
+        )
+        manual_stmt = (
+            update(QueueItemRecord)
+            .where(
+                *expired_where,
+                QueueItemRecord.attempt_count + 1 > max_attempts,
+            )
+            .values(
+                state=QueueState.MANUAL_REVIEW,
+                attempt_count=QueueItemRecord.attempt_count + 1,
+                claimed_by=None,
+                lease_until=None,
+            )
+            .returning(QueueItemRecord.id)
+        )
+        requeued_ids = list(self._session.execute(requeue_stmt).scalars().all())
+        manual_ids = list(self._session.execute(manual_stmt).scalars().all())
+
+        ids = requeued_ids + manual_ids
+        if not ids:
+            return [], []
+        records = self._session.execute(
+            select(QueueItemRecord).where(QueueItemRecord.id.in_(ids))
+        ).scalars().all()
+        by_id = {record.id: record for record in records}
+        requeued = [
+            self._to_domain(by_id[item_id]) for item_id in requeued_ids
+        ]
+        manual = [
+            self._to_domain(by_id[item_id]) for item_id in manual_ids
+        ]
+        return requeued, manual
+
     # ---- 内部辅助 ----
 
     @staticmethod

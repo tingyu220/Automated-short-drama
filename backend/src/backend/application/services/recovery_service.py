@@ -35,28 +35,5 @@ def recover_expired(
     状态迁移使用 QueueStateMachine.transition，非法迁移抛 ConflictError。
     """
     repo = SqlAlchemyQueueRepository(session)
-    expired_items = repo.find_expired(now)
-
-    requeued: list[QueueItem] = []
-    manual_review: list[QueueItem] = []
-
-    for item in expired_items:
-        item.attempt_count += 1
-        if item.attempt_count <= max_attempts:
-            item.state = QueueStateMachine.transition(
-                item.state, QueueState.QUEUED
-            )
-            item.claimed_by = None
-            item.lease_until = None
-            repo.update(item)
-            requeued.append(item)
-        else:
-            item.state = QueueStateMachine.transition(
-                item.state, QueueState.MANUAL_REVIEW
-            )
-            item.claimed_by = None
-            item.lease_until = None
-            repo.update(item)
-            manual_review.append(item)
-
+    requeued, manual_review = repo.recover_expired(now, max_attempts)
     return RecoveryResult(requeued=requeued, manual_review=manual_review)
