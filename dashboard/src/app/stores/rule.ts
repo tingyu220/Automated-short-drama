@@ -82,6 +82,24 @@ export const useRuleStore = defineStore("rule", () => {
     }
   }
 
+  async function saveDraft(
+    ruleSetId: string,
+    payload: Record<string, unknown>
+  ): Promise<RuleVersion | null> {
+    loading.value = true
+    error.value = null
+    try {
+      return await apiPost<RuleVersion>(`/rules/${ruleSetId}/draft`, {
+        payload
+      })
+    } catch (err) {
+      error.value = toErrorMessage(err)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function publish(ruleSetId: string): Promise<RuleVersion | null> {
     loading.value = true
     error.value = null
@@ -121,6 +139,7 @@ export const useRuleStore = defineStore("rule", () => {
     fetchVersions,
     clearVersions,
     validate,
+    saveDraft,
     publish,
     simulatePrice
   }

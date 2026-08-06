@@ -86,8 +86,18 @@ watch(selectedCategory, () => {
   void loadVersions()
 })
 
-function onSaveDraft(payload: RuleDraftPayload) {
-  ElMessage.success(`「${payload.category}」草稿已保存在本地`)
+async function onSaveDraft(payload: RuleDraftPayload) {
+  if (!payload.ruleSetId) {
+    ElMessage.warning("当前分类没有可选规则集")
+    return
+  }
+  const version = await ruleStore.saveDraft(payload.ruleSetId, payload.data)
+  if (ruleStore.error || !version) {
+    ElMessage.error(ruleStore.error ?? "保存草稿失败")
+    return
+  }
+  ElMessage.success(`「${payload.category}」草稿已保存，版本 v${version.version}`)
+  await loadVersions()
 }
 
 async function onValidate(ruleSetId: string) {
