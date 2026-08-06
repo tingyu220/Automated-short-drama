@@ -177,8 +177,9 @@ class TestPhase10FullScenario:
         assert bundle.feishu.written_links == {}
 
     def test_tomato_dry_run_default_settings_completes_without_submit(
-        self, db_session: Session
+        self, db_session: Session, monkeypatch
     ) -> None:
+        monkeypatch.delenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", raising=False)
         task = _task("task-phase10-dryrun-001", "验收短剧D", "TOMATO")
         bundle = _bundle(task)
         claimed = _enqueue(db_session, bundle)
@@ -188,7 +189,7 @@ class TestPhase10FullScenario:
             db_session,
             bundle,
             claimed,
-            settings=Settings(),
+            settings=Settings(allow_final_submit=False),
         )
 
         assert result.final_queue_state == QueueState.COMPLETED

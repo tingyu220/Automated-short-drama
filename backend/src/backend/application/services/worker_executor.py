@@ -29,6 +29,7 @@ from backend.application.services.worker_execution import (
     STATUS_MANUAL_REVIEW,
 )
 from backend.domain.execution.execution_event import EventLevel, ExecutionEvent
+from backend.domain.ledger.task_ledger import TaskLedger
 from backend.domain.plans.plan_spec import PlanSpec
 from backend.domain.queue.queue_item import QueueItem
 from backend.domain.rules.account_block import AccountRow
@@ -67,23 +68,23 @@ class _ScratchLedgerRepository:
     """StandardDeliveryService 使用的内存台账仓，避免与 Worker 完成台账重复写库。"""
 
     def __init__(self) -> None:
-        self._ledgers: dict[str, object] = {}
+        self._ledgers: dict[str, TaskLedger] = {}
 
-    def add(self, ledger):
+    def add(self, ledger: TaskLedger) -> TaskLedger:
         self._ledgers[ledger.id] = ledger
         return ledger
 
-    def get(self, ledger_id: str):
+    def get(self, ledger_id: str) -> TaskLedger | None:
         return self._ledgers.get(ledger_id)
 
-    def update(self, ledger):
+    def update(self, ledger: TaskLedger) -> TaskLedger:
         self._ledgers[ledger.id] = ledger
         return ledger
 
-    def list_by_task(self, task_id: str):
+    def list_by_task(self, task_id: str) -> list[TaskLedger]:
         return [l for l in self._ledgers.values() if l.task_id == task_id]
 
-    def list_all(self):
+    def list_all(self) -> list[TaskLedger]:
         return list(self._ledgers.values())
 
 
@@ -94,6 +95,7 @@ def build_worker_executor(
     *,
     include_test: bool = False,
     account_rows: list[AccountRow] | None = None,
+    simulate_submit: bool = True,
 ) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
     """组装 Worker 真实编排执行器；account_rows 仅用于测试注入。"""
     price_rules = SqlAlchemyPriceRuleRepository(session).list_template_price_rules()
@@ -108,6 +110,8 @@ def build_worker_executor(
     )
     rows = MOCK_ACCOUNT_ROWS if account_rows is None else account_rows
     scratch_ledger_repo = _ScratchLedgerRepository()
+    # Mock 模式同样模拟完整提交链路（与 CLI Mock 模式一致），
+    # 真实提交仍由 settings.allow_final_submit 把关。
     delivery = StandardDeliveryService(
         PlanValidationService(),
         bundle.delivery,
@@ -117,8 +121,7 @@ def build_worker_executor(
         scratch_ledger_repo,
         SqlAlchemyTaskRepository(session),
         allow_final_submit=settings.allow_final_submit,
-        # Mock 模式同样模拟完整提交链路（与 CLI Mock 模式一致），真实提交由开关把关。
-        use_real_adapters=True,
+        use_real_adapters=simulate_submit,
     )
 
     def execute(task: DramaTask, item: QueueItem) -> ExecutionOutcome:
@@ -211,7 +214,7 @@ def _extract_links(
                 context_json={"platform": task.platform},
             )
         ]
-    if not links:
+    if not links.get("IAA"):
         return None, [
             ExecutionEvent(
                 task_id=task.id,
@@ -357,7 +360,7 @@ def _delivery_event(task: DramaTask, outcome) -> ExecutionEvent:
         task_id=task.id,
         event_type="DELIVERY",
         message=(
-            f"标准投放未提交（安全开关拦截），本地流程完成: {outcome.external_task_id}"
+            f"标准投放未提交（安全开关拦截），本地流程完成: {outcome.external_task_id or '-'}"
             if dry_run
             else f"标准投放完成: {outcome.external_task_id}"
         ),
