@@ -256,6 +256,27 @@ describe("useRuleStore", () => {
     expect(store.versions).toEqual(payload)
   })
 
+  it("clearVersions 清空版本与错误", async () => {
+    const fetchMock = stubFetch()
+    fetchMock.mockResolvedValue(
+      okJson([
+        {
+          id: "v1",
+          version: "1.0.0",
+          status: "PUBLISHED",
+          published_at: "2026-08-06T08:00:00"
+        }
+      ])
+    )
+
+    const store = useRuleStore()
+    await store.fetchVersions("r1")
+    store.clearVersions()
+
+    expect(store.versions).toEqual([])
+    expect(store.error).toBeNull()
+  })
+
   it("simulatePrice 返回模拟结果", async () => {
     const fetchMock = stubFetch()
     const payload = {

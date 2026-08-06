@@ -64,6 +64,11 @@ export const useRuleStore = defineStore("rule", () => {
     }
   }
 
+  function clearVersions() {
+    versions.value = []
+    error.value = null
+  }
+
   async function validate(ruleSetId: string): Promise<RuleVersion | null> {
     loading.value = true
     error.value = null
@@ -114,6 +119,7 @@ export const useRuleStore = defineStore("rule", () => {
     error,
     fetchRules,
     fetchVersions,
+    clearVersions,
     validate,
     publish,
     simulatePrice

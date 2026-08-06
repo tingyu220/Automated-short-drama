@@ -97,9 +97,16 @@ const DEFAULT_PRICE: Record<
   }
 }
 
-const STRATEGY_OPTIONS = [
+const PRICE_STRATEGY_OPTIONS = [
   { value: "HIGHER_PRICE_FIRST", label: "同距离优先高价" },
   { value: "LOWER_PRICE_FIRST", label: "同距离优先低价" }
+]
+
+const MATERIAL_STRATEGY_OPTIONS = [
+  { value: "BASE_1_COPY_2", label: "基础1组复制2次" },
+  { value: "BASE_2_COPY_2", label: "基础2组复制2次" },
+  { value: "BASE_3_COPY_1", label: "基础3组复制1次" },
+  { value: "EVEN_SPLIT", label: "均匀拆分" }
 ]
 
 const selectedPriceKey = ref("iap_2_9")
@@ -279,7 +286,7 @@ function publish() {
             @change="pushDraft"
           >
             <ElOption
-              v-for="option in STRATEGY_OPTIONS"
+              v-for="option in PRICE_STRATEGY_OPTIONS"
               :key="option.value"
               :label="option.label"
               :value="option.value"
@@ -332,10 +339,7 @@ function publish() {
               <td>
                 <ElSelect v-model="row.strategy">
                   <ElOption
-                    v-for="option in STRATEGY_OPTIONS.concat({
-                      value: 'BASE_3_COPY_1',
-                      label: '基础3组复制1次'
-                    })"
+                    v-for="option in MATERIAL_STRATEGY_OPTIONS"
                     :key="option.value"
                     :label="option.label"
                     :value="option.value"

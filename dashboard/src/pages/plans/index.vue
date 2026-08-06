@@ -9,6 +9,7 @@ import StatusDot from "@/shared/ui/StatusDot.vue"
 import PlanSpecPreview from "@/widgets/plan-preview/PlanSpecPreview.vue"
 import { getPlanStatusMeta } from "@/widgets/plan-preview/plan-status"
 import { usePlanStore, type PlanView } from "@/app/stores/plan"
+import { formatDateTime } from "@/entities/task/types"
 
 const planStore = usePlanStore()
 
@@ -96,7 +97,7 @@ function openPlan(plan: PlanView) {
               </span>
             </td>
             <td class="plans-page__mono">{{ plan.externalTaskId }}</td>
-            <td>{{ plan.createdAt }}</td>
+            <td>{{ formatDateTime(plan.createdAt) }}</td>
             <td class="plans-page__operations">
               <button
                 type="button"

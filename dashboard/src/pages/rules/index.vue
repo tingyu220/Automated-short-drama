@@ -71,6 +71,8 @@ const selectedRuleSetId = computed(() => {
 async function loadVersions() {
   if (selectedRuleSetId.value) {
     await ruleStore.fetchVersions(selectedRuleSetId.value)
+  } else {
+    ruleStore.clearVersions()
   }
 }
 
