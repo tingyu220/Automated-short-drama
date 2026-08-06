@@ -1,0 +1,21 @@
+{
+  "base_url": "https://delivery.example.com",
+  "asset_search_input": "input[data-testid=asset-search-input]",
+  "asset_search_button": "button[data-testid=asset-search-button]",
+  "asset_create_button": "button[data-testid=asset-create-button]",
+  "asset_link_input": "input[data-testid=asset-link-input]",
+  "asset_save_button": "button[data-testid=asset-save-button]",
+  "album_id_field": "input[data-testid=album-id-field]",
+  "delivery_drama_id_field": "input[data-testid=delivery-drama-id-field]",
+  "config_search_input": "input[data-testid=config-search-input]",
+  "config_create_button": "button[data-testid=config-create-button]",
+  "config_name_input": "input[data-testid=config-name-input]",
+  "config_main_drama": "input[data-testid=config-main-drama]",
+  "config_distributor": "input[data-testid=config-distributor]",
+  "config_link_input": "input[data-testid=config-link-input]",
+  "config_save_button": "button[data-testid=config-save-button]",
+  "plan_submit_button": "button[data-testid=plan-submit-button]",
+  "confirm_submit_button": "button[data-testid=confirm-submit-button]",
+  "task_row": "tr[data-testid=task-row]",
+  "task_status_cell": "td[data-testid=task-status-cell]"
+}
