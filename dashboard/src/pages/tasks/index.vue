@@ -21,8 +21,10 @@ import { useQueueStore } from "@/app/stores/queue"
 import { useTaskStore } from "@/app/stores/task"
 import { getStatusLabel } from "@/shared/utils/status"
 import {
+  WORKFLOW_STEPS,
   toTaskView,
   type TaskAction,
+  type PromotionLink,
   type TaskView
 } from "@/entities/task/types"
 
@@ -32,7 +34,7 @@ const queueStore = useQueueStore()
 const WORKER_ID = "ui-worker"
 const TERMINAL_QUEUE_STATES = ["COMPLETED", "CANCELLED"]
 
-const STAGE_OPTIONS = [
+const STATUS_OPTIONS = [
   "WAITING_TIME",
   "READY",
   "QUEUED",
@@ -45,6 +47,12 @@ const STAGE_OPTIONS = [
   "FAILED",
   "CANCELLED"
 ]
+
+const STAGE_OPTIONS = WORKFLOW_STEPS.map((step) => step.key)
+
+function stageLabel(key: string): string {
+  return WORKFLOW_STEPS.find((step) => step.key === key)?.label ?? key
+}
 
 function today(): string {
   const now = new Date()
@@ -74,6 +82,29 @@ const detailTask = computed<TaskView | null>(() =>
   taskStore.detail ? toTaskView(taskStore.detail) : null
 )
 
+const detailLinks = computed<PromotionLink[]>(() => {
+  const task = detailTask.value
+  if (!task) return []
+  const base: Array<{
+    key: PromotionLink["key"]
+    label: string
+    status: string | null | undefined
+  }> = [
+    { key: "iaa", label: "IAA", status: task.iaa },
+    { key: "iap_9_9", label: "9.9", status: task.price_9_9 },
+    { key: "iap_2_9", label: "2.9", status: task.price_2_9 }
+  ]
+  return base.map((item) => ({
+    key: item.key,
+    label: item.label,
+    status: item.status ?? "",
+    source: "—",
+    entry: "—",
+    method: "—",
+    url: ""
+  }))
+})
+
 const filteredTasks = computed(() => {
   const q = searchQ.value.trim().toLowerCase()
   return taskStore.tasks
@@ -81,7 +112,7 @@ const filteredTasks = computed(() => {
     .filter((task) => {
       if (platform.value && task.platform !== platform.value) return false
       if (status.value && task.status !== status.value) return false
-      if (stage.value && (task.queue_state ?? task.status) !== stage.value) {
+      if (stage.value && task.current_step !== stage.value) {
         return false
       }
       if (
@@ -273,7 +304,7 @@ function exportTasks() {
         @change="loadAll"
       >
         <ElOption
-          v-for="item in STAGE_OPTIONS"
+          v-for="item in STATUS_OPTIONS"
           :key="item"
           :label="getStatusLabel(item)"
           :value="item"
@@ -288,7 +319,7 @@ function exportTasks() {
         <ElOption
           v-for="item in STAGE_OPTIONS"
           :key="item"
-          :label="getStatusLabel(item)"
+          :label="stageLabel(item)"
           :value="item"
         />
       </ElSelect>
@@ -333,6 +364,7 @@ function exportTasks() {
     <TaskDetailDrawer
       :open="drawerOpen"
       :task="detailTask"
+      :links="detailLinks"
       @update:open="drawerOpen = $event"
     />
 

@@ -34,7 +34,7 @@ function stageLabel(task: TaskView): string {
     const step = WORKFLOW_STEPS.find((item) => item.key === task.current_step)
     if (step) return step.label
   }
-  return getStatusLabel(task.queue_state ?? task.status)
+  return "—"
 }
 
 function continueLabel(task: TaskView): string {

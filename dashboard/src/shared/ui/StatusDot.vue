@@ -1,20 +1,26 @@
 <script setup lang="ts">
-withDefaults(
+import { computed } from "vue"
+
+const props = withDefaults(
   defineProps<{
     color?: string
-    active?: boolean
+    active?: boolean | string
   }>(),
   {
     color: "var(--color-status-pending)",
     active: false
   }
 )
+
+const isActive = computed(
+  () => props.active === true || String(props.active).toLowerCase() === "true"
+)
 </script>
 
 <template>
   <span
     class="status-dot"
-    :class="{ 'is-active': active }"
+    :class="{ 'is-active': isActive }"
     :style="{ backgroundColor: color }"
     aria-hidden="true"
   />

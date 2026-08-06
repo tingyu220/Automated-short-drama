@@ -4,6 +4,7 @@ import WorkflowTimeline from "@/widgets/workflow-timeline/WorkflowTimeline.vue"
 import {
   buildWorkflowSteps,
   getWorkflowNodeMeta,
+  queueStateToStep,
   type WorkflowStepNode
 } from "@/entities/task/types"
 
@@ -62,5 +63,14 @@ describe("WorkflowTimeline", () => {
     expect(built.filter((step) => step.status === "done")).toHaveLength(3)
     expect(built.find((step) => step.key === "config")?.status).toBe("current")
     expect(built.find((step) => step.key === "product")?.status).toBe("pending")
+  })
+
+  it("queueStateToStep 将队列状态映射到工作流阶段", () => {
+    expect(queueStateToStep("QUEUED")).toBe("feishu")
+    expect(queueStateToStep("CLAIMED")).toBe("resource")
+    expect(queueStateToStep("RUNNING")).toBe("config")
+    expect(queueStateToStep("running")).toBe("config")
+    expect(queueStateToStep("PAUSED")).toBeNull()
+    expect(queueStateToStep(null)).toBeNull()
   })
 })

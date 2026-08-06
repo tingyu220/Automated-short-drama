@@ -142,8 +142,21 @@ export function toTaskView(
 
 export function maskUrl(url: string): string {
   if (!url) return ""
-  if (url.length <= 32) return url
-  return `${url.slice(0, 20)}…${url.slice(-12)}`
+  if (url.length <= 20) return url
+  const head = 20
+  const tail = Math.min(12, url.length - head)
+  return `${url.slice(0, head)}…${url.slice(-tail)}`
+}
+
+const QUEUE_STATE_STEP_MAP: Record<string, string> = {
+  QUEUED: "feishu",
+  CLAIMED: "resource",
+  RUNNING: "config"
+}
+
+export function queueStateToStep(state?: string | null): string | null {
+  if (!state) return null
+  return QUEUE_STATE_STEP_MAP[state.toUpperCase()] ?? null
 }
 
 export function formatDateTime(value?: string | null): string {

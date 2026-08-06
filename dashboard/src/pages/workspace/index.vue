@@ -12,7 +12,8 @@ import { useSystemStore } from "@/app/stores/system"
 import { useTaskStore } from "@/app/stores/task"
 import {
   formatDateTime,
-  formatRemainingTime
+  formatRemainingTime,
+  queueStateToStep
 } from "@/entities/task/types"
 
 const taskStore = useTaskStore()
@@ -117,6 +118,7 @@ const resourceStatuses = computed(() => [
           :task="current.task"
           :queue-item="current.item"
           :loading="queueStore.loading"
+          :current-step="queueStateToStep(current.item?.state)"
         />
       </div>
 

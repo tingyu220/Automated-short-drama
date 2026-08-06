@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import { getStatusColor, getStatusLabel } from "@/shared/utils/status"
 import {
   getLinkStatusMeta,
-  getWorkflowNodeMeta
+  getWorkflowNodeMeta,
+  maskUrl
 } from "@/entities/task/types"
 
 describe("status-mapping", () => {
@@ -57,5 +58,21 @@ describe("status-mapping", () => {
     expect(getLinkStatusMeta("CHECKING").label).toBe("检测中")
     expect(getLinkStatusMeta("FAILED").label).toBe("提取失败")
     expect(getLinkStatusMeta(null).label).toBe("未提取")
+  })
+
+  it("maskUrl 对 21-32 字符的链接也脱敏", () => {
+    expect(maskUrl("")).toBe("")
+    expect(maskUrl("a".repeat(20))).toBe("a".repeat(20))
+
+    const url21 = "b".repeat(21)
+    const masked21 = maskUrl(url21)
+    expect(masked21).not.toBe(url21)
+    expect(masked21).toContain("…")
+    expect(masked21.replace("…", "").length).toBe(21)
+
+    const url32 = "c".repeat(32)
+    const masked32 = maskUrl(url32)
+    expect(masked32).not.toBe(url32)
+    expect(masked32.replace("…", "").length).toBe(32)
   })
 })
