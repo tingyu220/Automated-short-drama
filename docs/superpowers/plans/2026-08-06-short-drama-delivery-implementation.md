@@ -390,6 +390,8 @@ Commit Message：`docs: 完成Phase 0设计落盘`（提交前向用户确认）
 
 **Phase 9 状态：Mock 全量验收通过（2026-08-07）；真实链路待 Playwright page 校准后按 Runbook 验收。**
 
+**Phase 10 状态：主链路接线完成，Mock 全链路验收通过（2026-08-07）；真实链路与剩余 Important 项见 `docs/phase10-delivery-summary.md`。**
+
 ---
 
 ## 全局测试与提交规则
