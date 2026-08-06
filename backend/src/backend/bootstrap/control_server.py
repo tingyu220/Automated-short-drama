@@ -1,11 +1,14 @@
 """Control Server 启动入口。
 
 用法: python -m backend.bootstrap.control_server [--host HOST] [--port PORT] [--reload] [--skip-seed] [--disable-scheduler]
+
+注意：--reload 下调度线程运行在 reloader 父进程，热重载不会更新调度代码。
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -15,7 +18,7 @@ import uvicorn
 
 from backend.application.services.delivery_scheduler import DeliveryScheduler
 from backend.application.services.rule_seed_service import seed_rules_from_defaults
-from backend.bootstrap.adapters import build_adapters
+from backend.domain.errors.domain_error import ConfigurationError
 from backend.infrastructure.database.repositories.queue_repository import (
     SqlAlchemyQueueRepository,
 )
@@ -25,6 +28,8 @@ from backend.infrastructure.database.repositories.task_repository import (
 from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.session import SessionLocal
+from backend.platforms.feishu.feishu_adapter import FeishuAdapter as RealFeishuAdapter
+from backend.platforms.mock.mock_feishu import MockFeishuAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +57,10 @@ def _start_scheduler(disable: bool) -> None:
     if disable or _scheduler_started:
         return
 
-    bundle = build_adapters(Settings(), use_real=False)
+    feishu, mode = _build_scheduler_feishu()
     thread = threading.Thread(
         target=_scheduler_loop,
-        args=(bundle.feishu,),
+        args=(feishu,),
         name="delivery-scheduler",
         daemon=True,
     )
@@ -63,15 +68,30 @@ def _start_scheduler(disable: bool) -> None:
     _scheduler_started = True
     print(
         "剧目扫描调度器已启动: "
-        "interval=3600s, mode=mock"
+        f"interval=3600s, mode={mode}"
     )
+
+
+def _build_scheduler_feishu():
+    """按 WORKBUDDY_USE_REAL_ADAPTERS 选择扫描用飞书 Adapter。"""
+    raw = os.getenv("WORKBUDDY_USE_REAL_ADAPTERS", "").strip().lower()
+    if raw in {"true", "1", "yes", "on"}:
+        url = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_URL", "").strip()
+        if not url:
+            raise ConfigurationError(
+                "真实扫描需要 WORKBUDDY_FEISHU_TASK_SHEET_URL"
+            )
+        name = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_NAME", "剧目表")
+        return RealFeishuAdapter(url, name, dry_run=False), "real"
+    return MockFeishuAdapter(), "mock"
 
 
 def _scheduler_loop(feishu, interval_seconds: int = 3600) -> None:
     """调度线程主体：每轮使用独立 Session 扫描并提交。"""
     while True:
-        session = SessionLocal()
+        session = None
         try:
+            session = SessionLocal()
             scheduler = DeliveryScheduler(
                 feishu=feishu,
                 task_repo=SqlAlchemyTaskRepository(session),
@@ -86,10 +106,12 @@ def _scheduler_loop(feishu, interval_seconds: int = 3600) -> None:
                 f"enqueued={result.enqueued} skipped={result.skipped}"
             )
         except Exception:
-            session.rollback()
+            if session is not None:
+                session.rollback()
             logger.exception("剧目扫描失败，等待下一轮")
         finally:
-            session.close()
+            if session is not None:
+                session.close()
         time.sleep(interval_seconds)
 
 

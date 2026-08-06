@@ -161,7 +161,7 @@ class TestDeliveryScheduler:
         assert item.id == queue_id
         assert item.state == QueueState.WAITING_TIME
 
-    def test_completed_queue_item_is_rebuilt_as_waiting_time(self):
+    def test_completed_queue_item_is_not_auto_requeued(self):
         now = _shanghai(SCAN_DAY, 0, 30)
         task = _task("2", _shanghai(SCAN_DAY, 10))
         task_repo = FakeTaskRepository({task.id: task})
@@ -181,15 +181,52 @@ class TestDeliveryScheduler:
 
         result = scheduler.tick(now)
 
-        assert result.enqueued == 1
+        assert result.enqueued == 0
+        assert result.skipped == 1
         items = queue_repo.list_by_task(task.id)
         assert len(items) == 1
         assert items[0].id == "q-old"
-        assert items[0].state == QueueState.WAITING_TIME
-        assert items[0].available_at == as_utc(task.available_time)
-        assert items[0].attempt_count == 0
-        assert items[0].claimed_by is None
-        assert items[0].lease_until is None
+        assert items[0].state == QueueState.COMPLETED
+        assert items[0].claimed_by == "worker-1"
+
+    def test_cancelled_queue_item_is_not_auto_requeued(self):
+        now = _shanghai(SCAN_DAY, 0, 30)
+        task = _task("2", _shanghai(SCAN_DAY, 10))
+        task_repo = FakeTaskRepository({task.id: task})
+        old_item = QueueItem(
+            id="q-cancelled",
+            task_id=task.id,
+            state=QueueState.CANCELLED,
+            available_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        queue_repo = FakeQueueRepository({"q-cancelled": old_item})
+        scheduler = DeliveryScheduler(
+            RecordingFeishu([task]), task_repo, queue_repo, now_fn=lambda: now
+        )
+
+        result = scheduler.tick(now)
+
+        assert result.enqueued == 0
+        assert result.skipped == 1
+        item = queue_repo.list_by_task(task.id)[0]
+        assert item.state == QueueState.CANCELLED
+
+    def test_task_available_time_is_normalized_to_utc(self):
+        now = _shanghai(SCAN_DAY, 0, 30)
+        local_time = _shanghai(SCAN_DAY, 10)
+        task = _task("2", local_time)
+        scheduler = DeliveryScheduler(
+            RecordingFeishu([task]),
+            FakeTaskRepository(),
+            FakeQueueRepository(),
+            now_fn=lambda: now,
+        )
+
+        scheduler.tick(now)
+
+        stored = scheduler._task_repo.get("2")
+        assert stored.available_time == as_utc(local_time)
+        assert stored.available_time.tzinfo is not None
 
     def test_available_time_update_syncs_queue_available_at(self):
         now = _shanghai(SCAN_DAY, 0, 30)
@@ -211,7 +248,9 @@ class TestDeliveryScheduler:
         item = queue_repo.list_by_task(task.id)[0]
         assert item.state == QueueState.WAITING_TIME
         assert item.available_at == as_utc(updated.available_time)
-        assert task_repo.get(task.id).available_time == updated.available_time
+        assert task_repo.get(task.id).available_time == as_utc(
+            updated.available_time
+        )
 
     def test_existing_queued_item_is_skipped_without_reset(self):
         now = _shanghai(SCAN_DAY, 0, 30)
@@ -268,6 +307,36 @@ class TestDeliveryScheduler:
 
         assert ticked
         assert ticked[0] == now
+        assert thread.is_alive() is False
+
+    def test_run_forever_continues_after_tick_error(self):
+        now = _shanghai(SCAN_DAY, 0, 30)
+        scheduler = DeliveryScheduler(
+            RecordingFeishu([]),
+            FakeTaskRepository(),
+            FakeQueueRepository(),
+            now_fn=lambda: now,
+            scan_interval_seconds=0.05,
+        )
+        stop = threading.Event()
+        calls = {"count": 0}
+        original_tick = scheduler.tick
+
+        def flaky(now_value: datetime):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("boom")
+            stop.set()
+            return original_tick(now_value)
+
+        scheduler.tick = flaky
+        thread = threading.Thread(
+            target=scheduler.run_forever, args=(stop,), daemon=True
+        )
+        thread.start()
+        thread.join(timeout=3)
+
+        assert calls["count"] >= 2
         assert thread.is_alive() is False
 
     def test_scan_day_uses_shanghai_local_date(self):
