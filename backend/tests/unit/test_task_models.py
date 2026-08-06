@@ -117,6 +117,7 @@ class TestStatusConstants:
         assert QueueState.RUNNING == "RUNNING"
         assert QueueState.COMPLETED == "COMPLETED"
         assert QueueState.CANCELLED == "CANCELLED"
+        assert QueueState.FAILED == "FAILED"
 
     def test_step_status_values(self):
         assert StepStatus.PENDING == "PENDING"

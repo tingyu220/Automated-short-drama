@@ -7,15 +7,22 @@ from backend.domain.errors.domain_error import ConflictError
 # 合法迁移白名单
 _TRANSITIONS: dict[str, set[str]] = {
     "WAITING_TIME": {"QUEUED"},
-    "QUEUED": {"CLAIMED"},
-    "CLAIMED": {"RUNNING", "QUEUED", "MANUAL_REVIEW", "COMPLETED"},
+    "QUEUED": {"CLAIMED", "PAUSED", "CANCELLED"},
+    "CLAIMED": {
+        "RUNNING",
+        "QUEUED",
+        "PAUSED",
+        "MANUAL_REVIEW",
+        "COMPLETED",
+        "CANCELLED",
+    },
     "RUNNING": {"COMPLETED", "RETRY_WAIT", "PAUSED", "MANUAL_REVIEW", "FAILED", "CANCELLED", "QUEUED"},
     "RETRY_WAIT": {"QUEUED", "MANUAL_REVIEW"},
     "PAUSED": {"QUEUED", "RUNNING", "CANCELLED"},
     "MANUAL_REVIEW": {"QUEUED", "CANCELLED"},
     "COMPLETED": set(),
     "CANCELLED": set(),
-    "FAILED": set(),
+    "FAILED": {"QUEUED"},
 }
 
 

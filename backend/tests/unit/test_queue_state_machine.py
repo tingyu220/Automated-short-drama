@@ -14,14 +14,19 @@ class TestQueueStateMachine:
         [
             ("WAITING_TIME", "QUEUED"),
             ("QUEUED", "CLAIMED"),
+            ("QUEUED", "PAUSED"),
+            ("QUEUED", "CANCELLED"),
             ("CLAIMED", "RUNNING"),
             ("CLAIMED", "COMPLETED"),
+            ("CLAIMED", "PAUSED"),
+            ("CLAIMED", "CANCELLED"),
             ("RUNNING", "COMPLETED"),
             ("RUNNING", "RETRY_WAIT"),
             ("RUNNING", "PAUSED"),
             ("RUNNING", "MANUAL_REVIEW"),
             ("RUNNING", "FAILED"),
             ("RUNNING", "CANCELLED"),
+            ("FAILED", "QUEUED"),
             ("RETRY_WAIT", "QUEUED"),
             ("RETRY_WAIT", "MANUAL_REVIEW"),
             ("PAUSED", "QUEUED"),
@@ -47,7 +52,6 @@ class TestQueueStateMachine:
             ("COMPLETED", "RUNNING"),
             ("CANCELLED", "QUEUED"),
             ("CANCELLED", "RUNNING"),
-            ("FAILED", "QUEUED"),
             ("FAILED", "RUNNING"),
         ],
     )
@@ -57,7 +61,7 @@ class TestQueueStateMachine:
         with pytest.raises(ConflictError):
             QueueStateMachine.transition(current, target)
 
-    @pytest.mark.parametrize("terminal", ["COMPLETED", "CANCELLED", "FAILED"])
+    @pytest.mark.parametrize("terminal", ["COMPLETED", "CANCELLED"])
     def test_terminal_states_cannot_transition(self, terminal: str) -> None:
         """终态不能迁往任何目标。"""
         assert QueueStateMachine.can_transition(terminal, "QUEUED") is False
