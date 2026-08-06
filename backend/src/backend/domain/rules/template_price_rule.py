@@ -18,6 +18,7 @@ class TemplatePriceRule:
     target_price: float
     min_price: float
     max_price: float
+    key: str = ""
     same_distance_strategy: str = SameDistanceStrategy.HIGHER_PRICE_FIRST
     enabled: bool = True
     id: str = ""
