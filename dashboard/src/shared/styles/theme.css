@@ -1,0 +1,24 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--color-primary); text-decoration: none; }
+
+:root {
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: var(--color-primary-50);
+  --el-color-primary-dark-2: var(--color-primary-600);
+  --el-border-radius-base: var(--radius-button);
+}
+
+.el-button { --el-border-radius-base: var(--radius-button); }
+.el-input__wrapper { border-radius: var(--radius-input); }
+.el-dialog { --el-border-radius-base: var(--radius-dialog); }
