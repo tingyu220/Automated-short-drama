@@ -388,6 +388,8 @@ Commit Message：`docs: 完成Phase 0设计落盘`（提交前向用户确认）
 
 每个范围验证完成后保留台账与异常记录，更新生产验证报告。
 
+**Phase 9 状态：Mock 全量验收通过（2026-08-07）；真实链路待 Playwright page 校准后按 Runbook 验收。**
+
 ---
 
 ## 全局测试与提交规则
