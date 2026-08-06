@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/backend/__init__.py
+src/backend/application/__init__.py
+src/backend/bootstrap/__init__.py
+src/backend/domain/__init__.py
+src/backend/infrastructure/__init__.py
+src/backend/interfaces/__init__.py
+src/backend/platforms/__init__.py
+src/short_drama_delivery.egg-info/PKG-INFO
+src/short_drama_delivery.egg-info/SOURCES.txt
+src/short_drama_delivery.egg-info/dependency_links.txt
+src/short_drama_delivery.egg-info/requires.txt
+src/short_drama_delivery.egg-info/top_level.txt
