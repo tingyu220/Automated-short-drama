@@ -8,11 +8,11 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text as sa_text
-from sqlalchemy.orm import sessionmaker
 
 from backend.domain.errors.domain_error import ConfigurationError
 from backend.infrastructure.database.backup import backup_database
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.session import SessionLocal
 
 
 def _get_pragma(engine, pragma_name: str) -> str:
@@ -21,6 +21,16 @@ def _get_pragma(engine, pragma_name: str) -> str:
         result = conn.exec_driver_sql(f"PRAGMA {pragma_name}")
         row = result.fetchone()
         return str(row[0]) if row else ""
+
+
+def _table_exists(engine, table_name: str) -> bool:
+    """检查 SQLite 中指定表是否存在。"""
+    with engine.connect() as conn:
+        row = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
 
 
 class TestEngine:
@@ -46,7 +56,7 @@ class TestAlembic:
     """Alembic 迁移测试。"""
 
     def test_migrate_head_on_temp_db(self):
-        """对临时 SQLite 执行 alembic upgrade head 应成功。"""
+        """对临时 SQLite 执行 alembic upgrade head 应成功，并确认迁移作用于临时 DB。"""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
             db_url = f"sqlite:///{db_path}"
@@ -63,6 +73,11 @@ class TestAlembic:
                     str(Path("alembic").resolve()),
                 )
                 command.upgrade(alembic_cfg, "head")
+
+                # 验证迁移真实作用于临时 DB：alembic_version 表应存在
+                assert _table_exists(eng, "alembic_version"), (
+                    "迁移未作用于临时 DB，alembic_version 表不存在"
+                )
             finally:
                 eng.dispose()
 
@@ -99,14 +114,9 @@ class TestSession:
     """数据库会话测试。"""
 
     def test_session_local_bind(self):
-        """SessionLocal 绑定到引擎并可正常连接。"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_url = f"sqlite:///{Path(tmpdir) / 'test.db'}"
-            eng = create_app_engine(db_url)
-            try:
-                session_factory = sessionmaker(bind=eng)
-                session = session_factory()
-                session.execute(sa_text("SELECT 1"))
-                session.close()
-            finally:
-                eng.dispose()
+        """SessionLocal 可正常连接并执行查询。"""
+        session = SessionLocal()
+        try:
+            session.execute(sa_text("SELECT 1"))
+        finally:
+            session.close()

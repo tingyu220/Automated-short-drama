@@ -8,8 +8,8 @@ from sqlalchemy import Engine, event, create_engine
 from backend.infrastructure.config.settings import Settings, PROJECT_ROOT
 
 
-def _resolve_sqlite_url(database_url: str) -> str:
-    """将 SQLite 相对路径解析为绝对路径。"""
+def resolve_sqlite_url(database_url: str) -> str:
+    """将 SQLite 相对路径解析为绝对路径（公开接口）。"""
     if not database_url.startswith("sqlite:///"):
         return database_url
     prefix = "sqlite:///"
@@ -40,7 +40,7 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     if database_url is None:
         database_url = Settings().database_url
 
-    url = _resolve_sqlite_url(database_url)
+    url = resolve_sqlite_url(database_url)
     db_path = url[len("sqlite:///"):] if url.startswith("sqlite:///") else None
     if db_path:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
