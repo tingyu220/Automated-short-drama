@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database import migrations as migrations_module
 from backend.infrastructure.database.migrations import run_migrations
 
 
@@ -47,10 +48,11 @@ class TestRunMigrations:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
             db_url = f"sqlite:///{db_path}"
+            backup_dir = Path(tmpdir) / "data" / "backups"
 
             run_migrations(db_url)
             # 第二次调用应不报错
-            run_migrations(db_url)
+            run_migrations(db_url, backup_dir=backup_dir)
 
             engine = create_app_engine(db_url)
             try:
@@ -59,6 +61,49 @@ class TestRunMigrations:
                 )
             finally:
                 engine.dispose()
+
+    def test_migration_creates_backup_before_upgrade(self, monkeypatch):
+        """数据库文件存在时，迁移前先生成备份，迁移失败也不丢失备份。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            db_url = f"sqlite:///{db_path}"
+            backup_dir = Path(tmpdir) / "backups"
+            run_migrations(db_url)
+
+            def _fail_upgrade(*args, **kwargs):
+                raise RuntimeError("migration boom")
+
+            monkeypatch.setattr(
+                migrations_module.alembic.command,
+                "upgrade",
+                _fail_upgrade,
+            )
+
+            with pytest.raises(RuntimeError, match="migration boom"):
+                run_migrations(db_url, backup_dir=backup_dir)
+
+            backups = list(backup_dir.glob("app-*.db"))
+            assert len(backups) == 1
+
+    def test_migration_backup_failure_raises(self, monkeypatch):
+        """迁移前备份失败时必须明确失败，不能静默继续。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            db_url = f"sqlite:///{db_path}"
+            backup_dir = Path(tmpdir) / "backups"
+            run_migrations(db_url)
+
+            def _fail_backup(*args, **kwargs):
+                raise RuntimeError("backup boom")
+
+            monkeypatch.setattr(
+                migrations_module,
+                "backup_database",
+                _fail_backup,
+            )
+
+            with pytest.raises(RuntimeError, match="backup boom"):
+                run_migrations(db_url, backup_dir=backup_dir)
 
 
 class TestAutomationWorkerOnce:
