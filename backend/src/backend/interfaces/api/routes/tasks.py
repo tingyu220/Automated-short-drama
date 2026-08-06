@@ -4,11 +4,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Generator
 from datetime import date as date_type
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
+from backend.domain.common.timezones import as_utc
 from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.domain.tasks.drama_task import DramaTask
@@ -61,7 +62,7 @@ def list_tasks(
     available_from = None
     available_to = None
     if date is not None:
-        available_from = datetime.combine(date, time.min)
+        available_from = datetime.combine(date, time.min, tzinfo=timezone.utc)
         available_to = available_from + timedelta(days=1)
 
     tasks = SqlAlchemyTaskRepository(db).list_by_filters(
@@ -122,7 +123,7 @@ def enqueue_task(
                 f"任务 {task_id} 已存在活动队列项 {item.id}（{item.state}）"
             )
         item.state = QueueState.WAITING_TIME
-        item.available_at = task.available_time
+        item.available_at = as_utc(task.available_time)
         item.claimed_by = None
         item.lease_until = None
         item.attempt_count = 0
@@ -134,7 +135,7 @@ def enqueue_task(
                 id=str(uuid.uuid4()),
                 task_id=task.id,
                 state=QueueState.WAITING_TIME,
-                available_at=task.available_time,
+                available_at=as_utc(task.available_time),
             )
         )
         response.status_code = 201

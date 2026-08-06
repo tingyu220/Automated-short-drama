@@ -28,6 +28,7 @@ class TestMockFeishuAdapter:
         assert tasks
         assert all(isinstance(task, DramaTask) for task in tasks)
         assert all(task.available_time.date() == date(2026, 8, 6) for task in tasks)
+        assert all(task.available_time.tzinfo is not None for task in tasks)
 
     def test_fetch_tasks_deterministic(self):
         adapter = MockFeishuAdapter()

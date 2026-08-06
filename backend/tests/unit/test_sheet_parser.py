@@ -1,7 +1,7 @@
 """飞书剧目表 annotated CSV 解析器单元测试."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from backend.platforms.feishu.sheet_parser import parse_task_rows
 
@@ -22,9 +22,36 @@ class TestParseTaskRows:
 
         assert len(tasks) == 3
         by_name = {task.drama_name: task for task in tasks}
-        assert by_name["剧A"].available_time == datetime(2026, 8, 6, 10, 0)
-        assert by_name["剧B"].available_time == datetime(2026, 8, 6, 14, 30)
-        assert by_name["剧C"].available_time == datetime(2026, 8, 7, 9, 0)
+        assert by_name["剧A"].available_time == datetime(
+            2026, 8, 6, 2, 0, tzinfo=timezone.utc
+        )
+        assert by_name["剧B"].available_time == datetime(
+            2026, 8, 6, 6, 30, tzinfo=timezone.utc
+        )
+        assert by_name["剧C"].available_time == datetime(
+            2026, 8, 7, 1, 0, tzinfo=timezone.utc
+        )
+
+    def test_parse_time_binds_shanghai_then_converts_to_utc(self):
+        """E 列本地时间按东八区绑定后转换为 aware UTC。"""
+        tasks = parse_task_rows(SAMPLE_CSV)
+
+        for task in tasks:
+            assert task.available_time.tzinfo is not None
+            assert task.available_time.utcoffset() == timedelta(0)
+
+    def test_cross_timezone_midnight_release_maps_to_previous_utc_day(self):
+        """东八区 2026-08-08 00:30 对应 UTC 2026-08-07 16:30。"""
+        annotated_csv = (
+            "[row=9]组H,,,,2026/08/08 00:30,剧H,备注,TOMATO,,,,,,\n"
+        )
+
+        tasks = parse_task_rows(annotated_csv)
+
+        assert len(tasks) == 1
+        assert tasks[0].available_time == datetime(
+            2026, 8, 7, 16, 30, tzinfo=timezone.utc
+        )
 
     def test_parse_maps_columns_and_row_number(self):
         task = parse_task_rows(SAMPLE_CSV)[0]

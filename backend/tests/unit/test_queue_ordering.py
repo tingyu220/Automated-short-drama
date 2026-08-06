@@ -63,6 +63,27 @@ class TestEnqueueWhenReady:
         assert result[0].state == QueueState.QUEUED
         assert items[0].state == QueueState.WAITING_TIME  # 原列表不变
 
+    def test_cross_timezone_naive_stored_time_compared_as_utc(self) -> None:
+        """SQLite 回读的 naive UTC 值应与 aware UTC now 正确比较。"""
+        shanghai_release = datetime(
+            2026, 8, 8, 0, 30, tzinfo=timezone(timedelta(hours=8))
+        )
+        utc_release = shanghai_release.astimezone(timezone.utc)
+        stored_naive = utc_release.replace(tzinfo=None)
+        item = _make_item(
+            "t1",
+            state=QueueState.WAITING_TIME,
+            available_at=stored_naive,
+        )
+
+        before = enqueue_when_ready(
+            [item], now=utc_release - timedelta(minutes=1)
+        )
+        assert before == []
+
+        at_release = enqueue_when_ready([item], now=utc_release)
+        assert [entry.id for entry in at_release] == ["t1"]
+
 
 class TestPeekNext:
 

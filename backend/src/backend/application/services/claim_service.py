@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from backend.domain.common.timezones import as_utc
 from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.infrastructure.database.repositories.queue_repository import (
@@ -13,12 +14,16 @@ from backend.infrastructure.database.repositories.queue_repository import (
 
 
 def claim_next_task(
-    session: Session, worker_id: str, lease_seconds: int = 60
+    session: Session,
+    worker_id: str,
+    lease_seconds: int = 60,
+    now: datetime | None = None,
 ) -> QueueItem | None:
     """原子领取一个 QUEUED 任务，委托给 QueueRepository.claim_next."""
     repo = SqlAlchemyQueueRepository(session)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    return repo.claim_next(worker_id, lease_seconds, now)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    return repo.claim_next(worker_id, lease_seconds, as_utc(now))
 
 
 def release_claimed(

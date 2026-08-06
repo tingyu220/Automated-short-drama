@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import tempfile
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from alembic import command
@@ -40,11 +40,15 @@ def _setup_temp_db(db_url: str):
     return engine
 
 
-def _assert_lease_until(lease_until: datetime | None, seconds: int = 60) -> None:
-    """断言租约截止时间约为当前时间 + seconds."""
+def _assert_lease_until(
+    lease_until: datetime | None,
+    seconds: int = 60,
+    base: datetime | None = None,
+) -> None:
+    """断言租约截止时间约为 base + seconds。"""
     assert lease_until is not None
-    now_real = datetime.now(timezone.utc).replace(tzinfo=None)
-    assert abs((lease_until - now_real).total_seconds() - seconds) < 5
+    base = base or datetime(2026, 8, 6, 12, 0, 0)
+    assert abs((lease_until - base).total_seconds() - seconds) < 5
 
 
 class TestQueueFullScenario:
@@ -100,7 +104,7 @@ class TestQueueFullScenario:
                     assert claimed.id == queue_id
                     assert claimed.state == QueueState.CLAIMED
                     assert claimed.claimed_by == "worker-1"
-                    _assert_lease_until(claimed.lease_until)
+                    _assert_lease_until(claimed.lease_until, base=now)
 
                 # 3. 模拟 Worker 崩溃：租约过期
                 with Session(engine) as session:
@@ -141,7 +145,7 @@ class TestQueueFullScenario:
                     assert claimed_again.id == queue_id
                     assert claimed_again.state == QueueState.CLAIMED
                     assert claimed_again.claimed_by == "worker-1"
-                    _assert_lease_until(claimed_again.lease_until)
+                    _assert_lease_until(claimed_again.lease_until, base=now)
 
                 # 6. 完成出队：QueueItem=COMPLETED、DramaTask=COMPLETED、台账落库
                 with Session(engine, expire_on_commit=False) as session:

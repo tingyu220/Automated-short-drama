@@ -4,10 +4,11 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from backend.domain.common.timezones import as_utc
 from backend.domain.worker.worker_lease import (
     STATUS_RUNNING,
     STATUS_STOPPED,
@@ -30,7 +31,7 @@ def _record_to_domain(record: WorkerLeaseRecord) -> WorkerLease:
 
 def _now() -> datetime:
     """获取当前时间，便于测试 mock."""
-    return datetime.now()
+    return datetime.now(timezone.utc)
 
 
 def acquire_lease(
@@ -148,7 +149,7 @@ def list_expired_leases(
     now: datetime | None = None,
 ) -> list[WorkerLease]:
     """列出已过期的租约（lease_until < now）."""
-    now = now or _now()
+    now = as_utc(now if now is not None else _now())
     records = session.query(WorkerLeaseRecord).filter(
         WorkerLeaseRecord.lease_until < now,
     ).all()

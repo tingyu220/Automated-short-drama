@@ -10,6 +10,7 @@ from backend.application.services.worker_heartbeat import (
     release_lease,
     is_lease_active,
     list_expired_leases,
+    _now,
 )
 from backend.domain.worker.worker_lease import STATUS_RUNNING, STATUS_STOPPED
 from backend.infrastructure.database.models.worker import WorkerLeaseRecord
@@ -146,3 +147,13 @@ class TestListExpiredLeases:
         result = list_expired_leases(session, now=FIXED_NOW)
         assert len(result) == 1
         assert result[0].worker_id == "w1"
+
+
+class TestNow:
+    """_now 时区语义测试."""
+
+    def test_now_is_aware_utc(self):
+        """心跳当前时间必须是 aware UTC。"""
+        now = _now()
+        assert now.tzinfo is not None
+        assert now.utcoffset() == timedelta(0)

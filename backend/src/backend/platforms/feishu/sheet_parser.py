@@ -6,6 +6,7 @@ import io
 import re
 from datetime import datetime
 
+from backend.domain.common.timezones import SHANGHAI_TZ, UTC
 from backend.domain.tasks.drama_task import DramaTask
 
 
@@ -101,7 +102,8 @@ def _parse_time(raw: str) -> datetime | None:
     text = raw.strip()
     for fmt in _TIME_FORMATS:
         try:
-            return datetime.strptime(text, fmt)
+            naive = datetime.strptime(text, fmt)
         except ValueError:
             continue
+        return naive.replace(tzinfo=SHANGHAI_TZ).astimezone(UTC)
     return None

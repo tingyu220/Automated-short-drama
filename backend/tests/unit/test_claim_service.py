@@ -1,7 +1,7 @@
 """claim_service 单元测试 —— 使用 fake repository."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -94,6 +94,35 @@ class TestClaimNextTask:
         assert result is not None
         assert result.state == QueueState.CLAIMED
         assert result.claimed_by == "worker-1"
+
+    def test_claim_passes_aware_utc_now(self, monkeypatch, fake_repo):
+        """claim_next_task 必须向仓储传入 aware UTC 的当前时间。"""
+        item = make_item(state=QueueState.CLAIMED, claimed_by="worker-1")
+        fake_repo._next_item = item
+        monkeypatch.setattr(
+            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
+            lambda session: fake_repo,
+        )
+
+        claim_next_task(FakeSession(), "worker-1", lease_seconds=60)
+
+        recorded = fake_repo._claim_next_calls[0][2]
+        assert recorded.tzinfo is not None
+        assert recorded.utcoffset() == timedelta(0)
+
+    def test_claim_accepts_explicit_utc_now(self, monkeypatch, fake_repo):
+        """显式传入 now 时应原样按 aware UTC 传给仓储。"""
+        fixed = datetime(2026, 8, 7, 16, 30, tzinfo=timezone.utc)
+        item = make_item(state=QueueState.CLAIMED, claimed_by="worker-1")
+        fake_repo._next_item = item
+        monkeypatch.setattr(
+            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
+            lambda session: fake_repo,
+        )
+
+        claim_next_task(FakeSession(), "worker-1", lease_seconds=60, now=fixed)
+
+        assert fake_repo._claim_next_calls[0][2] == fixed
 
     def test_claim_no_available_returns_none(self, monkeypatch, fake_repo):
         fake_repo._next_item = None

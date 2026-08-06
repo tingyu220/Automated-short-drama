@@ -35,5 +35,5 @@ def advance_queue(
     for item in enqueued:
         queue_repo.update(item)
 
-    claimed = claim_next_task(session, worker_id, lease_seconds)
+    claimed = claim_next_task(session, worker_id, lease_seconds, now=now)
     return enqueued, claimed

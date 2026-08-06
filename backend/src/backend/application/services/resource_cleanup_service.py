@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.domain.common.timezones import as_utc
 from backend.infrastructure.database.models.execution import (
     ExecutionArtifactRecord,
 )
@@ -51,6 +52,7 @@ class ResourceCleanupService:
         """
         if retention_days is None:
             retention_days = self._config.artifact_retention_days
+        now = as_utc(now)
         cutoff = now - timedelta(days=retention_days)
         stmt = select(ExecutionArtifactRecord).where(
             ExecutionArtifactRecord.created_at < cutoff
@@ -73,6 +75,7 @@ class ResourceCleanupService:
         """按文件 mtime 删除过期日志文件，返回删除数。"""
         if retention_days is None:
             retention_days = self._config.log_retention_days
+        now = as_utc(now)
         cutoff = now - timedelta(days=retention_days)
         root = Path(log_dir).resolve()
         if not root.is_dir():
@@ -95,6 +98,7 @@ class ResourceCleanupService:
         """按 mtime 删除过期临时文件/目录（仅限目标目录内），返回删除数。"""
         if max_age_hours is None:
             max_age_hours = self._config.temp_max_age_hours
+        now = as_utc(now)
         cutoff = now - timedelta(hours=max_age_hours)
         root = Path(temp_dir).resolve()
         if not root.is_dir():

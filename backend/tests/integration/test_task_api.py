@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -236,7 +236,7 @@ class TestTaskApi:
     def test_enqueue_creates_then_duplicate_conflict(self, client, session_factory):
         """首次入队创建 WAITING_TIME 项，重复入队返回 409。"""
         task_id = str(uuid.uuid4())
-        available_at = datetime(2026, 8, 6, 12, 0, 0)
+        available_at = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
         with session_factory() as session:
             _create_task(
                 session,
@@ -260,7 +260,7 @@ class TestTaskApi:
         """终态队列项可复用为新的 WAITING_TIME 项。"""
         task_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
-        available_at = datetime(2026, 8, 6, 12, 0, 0)
+        available_at = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
         with session_factory() as session:
             _create_task(
                 session,

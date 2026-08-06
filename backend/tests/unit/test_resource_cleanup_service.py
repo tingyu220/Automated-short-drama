@@ -220,6 +220,25 @@ class TestCleanupLogsAndTemp:
         assert not old_dir.exists()
         assert fresh_file.exists()
 
+    def test_cleanup_expired_logs_normalizes_naive_now(self, tmp_path):
+        """naive now 应按 UTC 归一化后与 aware mtime 比较。"""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        old_log = log_dir / "old.log"
+        old_log.write_text("old")
+        aware_now = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
+        _set_mtime(old_log, aware_now - timedelta(days=31))
+
+        service = ResourceCleanupService(artifacts_root=tmp_path / "artifacts")
+        deleted = service.cleanup_expired_logs(
+            log_dir,
+            datetime(2026, 8, 6, 12, 0, 0),
+            retention_days=30,
+        )
+
+        assert deleted == 1
+        assert not old_log.exists()
+
 
 class TestEnforceArtifactLimit:
     """按任务保留最新 N 条产物."""

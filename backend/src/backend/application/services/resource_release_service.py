@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.application.services import worker_heartbeat
 from backend.application.services.completion_service import complete_task
+from backend.domain.common.timezones import as_utc
 from backend.domain.ledger.task_ledger import TaskLedger
 from backend.infrastructure.database.repositories.ledger_repository import (
     SqlAlchemyLedgerRepository,
@@ -81,7 +82,10 @@ class ResourceReleaseService:
         now: datetime,
     ) -> bool:
         """空闲超时则关闭浏览器并返回 True，否则返回 False。"""
-        if browser_session.last_active + timedelta(seconds=idle_seconds) < now:
+        if (
+            as_utc(browser_session.last_active) + timedelta(seconds=idle_seconds)
+            < as_utc(now)
+        ):
             browser_session.close()
             return True
         return False

@@ -252,3 +252,15 @@ class TestReleaseIdleBrowser:
 
         assert result is False
         assert browser.closed is False
+
+    def test_naive_last_active_normalized_as_utc(self):
+        """naive last_active 按 UTC 归一化后再与 aware now 比较。"""
+        now = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
+        browser = FakeBrowser(now - timedelta(seconds=61))
+        browser.last_active = browser.last_active.replace(tzinfo=None)
+
+        service = ResourceReleaseService()
+        result = service.release_idle_browser(browser, idle_seconds=60, now=now)
+
+        assert result is True
+        assert browser.closed is True
