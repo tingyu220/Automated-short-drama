@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
 from backend.application.services.claim_service import claim_next_task
 from backend.application.services.queue_service import enqueue_when_ready
 from backend.domain.ports.repositories import QueueRepository
@@ -12,7 +10,6 @@ from backend.domain.queue.queue_item import QueueItem, QueueState
 
 
 def advance_queue(
-    session: Session,
     queue_repo: QueueRepository,
     now: datetime,
     worker_id: str,
@@ -21,7 +18,7 @@ def advance_queue(
     """推进队列：到点项置为 QUEUED 并持久化，再领取 1 条并持久化。
 
     Args:
-        session: 数据库会话，用于 claim_next_task 领取。
+        queue_repo: QueueRepository 实现。
         queue_repo: QueueRepository 实现，用于查询与更新队列项。
         now: 当前时间。
         worker_id: 领取任务的 worker。
@@ -35,5 +32,5 @@ def advance_queue(
     for item in enqueued:
         queue_repo.update(item)
 
-    claimed = claim_next_task(session, worker_id, lease_seconds, now=now)
+    claimed = claim_next_task(queue_repo, worker_id, lease_seconds, now=now)
     return enqueued, claimed

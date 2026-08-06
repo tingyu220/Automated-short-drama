@@ -4,13 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
+from backend.domain.ports.repositories import QueueRepository
 from backend.domain.queue.queue_item import QueueItem, QueueState
-from backend.domain.queue.state_machine import QueueStateMachine
-from backend.infrastructure.database.repositories.queue_repository import (
-    SqlAlchemyQueueRepository,
-)
 
 
 @dataclass
@@ -22,7 +17,7 @@ class RecoveryResult:
 
 
 def recover_expired(
-    session: Session,
+    queue_repo: QueueRepository,
     now: datetime,
     max_attempts: int = 3,
 ) -> RecoveryResult:
@@ -34,6 +29,5 @@ def recover_expired(
 
     状态迁移使用 QueueStateMachine.transition，非法迁移抛 ConflictError。
     """
-    repo = SqlAlchemyQueueRepository(session)
-    requeued, manual_review = repo.recover_expired(now, max_attempts)
+    requeued, manual_review = queue_repo.recover_expired(now, max_attempts)
     return RecoveryResult(requeued=requeued, manual_review=manual_review)

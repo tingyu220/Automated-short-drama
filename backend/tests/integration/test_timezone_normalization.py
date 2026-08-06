@@ -71,7 +71,6 @@ class TestTimezoneNormalization:
                 with Session(engine, expire_on_commit=False) as session:
                     repo = SqlAlchemyQueueRepository(session)
                     before, claimed_before = advance_queue(
-                        session,
                         repo,
                         release_utc - timedelta(minutes=1),
                         "worker-1",
@@ -82,7 +81,6 @@ class TestTimezoneNormalization:
                     assert claimed_before is None
 
                     at_release, claimed = advance_queue(
-                        session,
                         repo,
                         release_utc,
                         "worker-1",

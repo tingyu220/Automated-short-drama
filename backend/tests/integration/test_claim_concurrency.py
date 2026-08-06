@@ -13,6 +13,9 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from backend.application.services.claim_service import claim_next_task
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
 from backend.domain.queue.queue_item import QueueState
 from backend.infrastructure.database.engine import create_app_engine
 
@@ -64,7 +67,11 @@ class TestClaimConcurrency:
                 s2 = Session(engine, expire_on_commit=False)
                 try:
                     # 第一次领取 —— 应成功
-                    item1 = claim_next_task(s1, "worker-A", lease_seconds=60)
+                    item1 = claim_next_task(
+                        SqlAlchemyQueueRepository(s1),
+                        "worker-A",
+                        lease_seconds=60,
+                    )
                     s1.commit()
                     assert item1 is not None, "第一个 session 应成功领取"
                     assert item1.id == qid
@@ -73,7 +80,11 @@ class TestClaimConcurrency:
                     assert item1.lease_until is not None
 
                     # 第二次领取 —— 应返回 None（已被领走）
-                    item2 = claim_next_task(s2, "worker-B", lease_seconds=60)
+                    item2 = claim_next_task(
+                        SqlAlchemyQueueRepository(s2),
+                        "worker-B",
+                        lease_seconds=60,
+                    )
                     s2.commit()
                     assert item2 is None, "第二个 session 应返回 None"
                 finally:
@@ -103,7 +114,9 @@ class TestClaimConcurrency:
             engine = _setup_temp_db(db_url)
             try:
                 with Session(engine) as s:
-                    result = claim_next_task(s, "worker-X")
+                    result = claim_next_task(
+                        SqlAlchemyQueueRepository(s), "worker-X"
+                    )
                     s.commit()
                     assert result is None
             finally:

@@ -94,7 +94,7 @@ class TestQueueFullScenario:
                 with Session(engine, expire_on_commit=False) as session:
                     queue_repo = SqlAlchemyQueueRepository(session)
                     enqueued, claimed = advance_queue(
-                        session, queue_repo, now, "worker-1", lease_seconds=60
+                        queue_repo, now, "worker-1", lease_seconds=60
                     )
                     session.commit()
 
@@ -122,7 +122,9 @@ class TestQueueFullScenario:
 
                 # 4. 崩溃恢复：CLAIMED -> QUEUED，attempt_count=1
                 with Session(engine, expire_on_commit=False) as session:
-                    result = recover_expired(session, now)
+                    result = recover_expired(
+                        SqlAlchemyQueueRepository(session), now
+                    )
                     session.commit()
 
                     assert len(result.requeued) == 1
@@ -136,7 +138,7 @@ class TestQueueFullScenario:
                 with Session(engine, expire_on_commit=False) as session:
                     queue_repo = SqlAlchemyQueueRepository(session)
                     enqueued_again, claimed_again = advance_queue(
-                        session, queue_repo, now, "worker-1", lease_seconds=60
+                        queue_repo, now, "worker-1", lease_seconds=60
                     )
                     session.commit()
 

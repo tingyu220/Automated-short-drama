@@ -106,7 +106,7 @@ def _enqueue(session: Session, bundle: AdapterBundle):
     task_repo = SqlAlchemyTaskRepository(session)
     DeliveryScheduler(bundle.feishu, task_repo, queue_repo).tick(NOW)
     _enqueued, claimed = advance_queue(
-        session, queue_repo, NOW, WORKER_ID, lease_seconds=60
+        queue_repo, NOW, WORKER_ID, lease_seconds=60
     )
     return claimed
 

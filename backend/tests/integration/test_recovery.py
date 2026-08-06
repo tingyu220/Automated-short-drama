@@ -13,6 +13,9 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from backend.application.services.recovery_service import recover_expired
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
 from backend.domain.queue.queue_item import QueueState
 from backend.infrastructure.database.engine import create_app_engine
 
@@ -83,7 +86,7 @@ class TestRecoveryIntegration:
                     )
 
                 with Session(engine) as s:
-                    result = recover_expired(s, now)
+                    result = recover_expired(SqlAlchemyQueueRepository(s), now)
                     s.commit()
 
                 # 验证：过期项被 requeue，未过期项不动
@@ -143,7 +146,7 @@ class TestRecoveryIntegration:
                     )
 
                 with Session(engine) as s:
-                    result = recover_expired(s, now)
+                    result = recover_expired(SqlAlchemyQueueRepository(s), now)
                     s.commit()
 
                 assert len(result.requeued) == 0
@@ -190,7 +193,7 @@ class TestRecoveryIntegration:
                     )
 
                 with Session(engine) as s:
-                    result = recover_expired(s, now)
+                    result = recover_expired(SqlAlchemyQueueRepository(s), now)
                     s.commit()
 
                 assert len(result.requeued) == 0

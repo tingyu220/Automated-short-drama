@@ -46,6 +46,23 @@ class QueueRepository(Protocol):
     def list_by_state(self, state: str) -> list[QueueItem]: ...
     def list_all(self) -> list[QueueItem]: ...
     def list_by_task(self, task_id: str) -> list[QueueItem]: ...
+    def claim_next(
+        self,
+        worker_id: str,
+        lease_seconds: int,
+        now: datetime,
+    ) -> QueueItem | None: ...
+    def find_expired(self, now: datetime) -> list[QueueItem]: ...
+    def release_claimed(
+        self,
+        item_id: str,
+        worker_id: str,
+    ) -> bool: ...
+    def recover_expired(
+        self,
+        now: datetime,
+        max_attempts: int,
+    ) -> tuple[list[QueueItem], list[QueueItem]]: ...
 
 
 class WorkflowRepository(Protocol):

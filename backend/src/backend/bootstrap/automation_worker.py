@@ -92,7 +92,7 @@ def _run_cycle(
     try:
         queue_repo = SqlAlchemyQueueRepository(session)
         enqueued, claimed = advance_queue(
-            session, queue_repo, now, worker_id, lease_seconds
+            queue_repo, now, worker_id, lease_seconds
         )
         if claimed is None:
             session.commit()

@@ -122,7 +122,7 @@ def now() -> datetime:
 class TestRecoverExpired:
     """recover_expired 核心逻辑测试."""
 
-    def test_expired_claimed_requeued(self, monkeypatch, fake_repo, now):
+    def test_expired_claimed_requeued(self, fake_repo, now):
         """过期 CLAIMED 项：attempt_count+1 → QUEUED，claimed_by/lease_until 清空."""
         item = make_item(
             "q-1",
@@ -134,12 +134,7 @@ class TestRecoverExpired:
         fake_repo._expired_items = [item]
         fake_repo._items["q-1"] = item
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
-        result = recover_expired(FakeSession(), now)
+        result = recover_expired(fake_repo, now)
 
         assert len(result.requeued) == 1
         assert len(result.manual_review) == 0
@@ -151,7 +146,7 @@ class TestRecoverExpired:
         assert updated.lease_until is None
 
     def test_expired_exceeds_max_attempts_to_manual_review(
-        self, monkeypatch, fake_repo, now
+        self, fake_repo, now
     ):
         """过期项 attempt_count 已达 max_attempts，进入 MANUAL_REVIEW."""
         item = make_item(
@@ -164,12 +159,7 @@ class TestRecoverExpired:
         fake_repo._expired_items = [item]
         fake_repo._items["q-1"] = item
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
-        result = recover_expired(FakeSession(), now)
+        result = recover_expired(fake_repo, now)
 
         assert len(result.requeued) == 0
         assert len(result.manual_review) == 1
@@ -180,23 +170,18 @@ class TestRecoverExpired:
         assert updated.claimed_by is None
         assert updated.lease_until is None
 
-    def test_non_expired_not_touched(self, monkeypatch, fake_repo, now):
+    def test_non_expired_not_touched(self, fake_repo, now):
         """未过期项不应被恢复."""
         # find_expired 返回空列表
         fake_repo._expired_items = []
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
-        result = recover_expired(FakeSession(), now)
+        result = recover_expired(fake_repo, now)
 
         assert len(result.requeued) == 0
         assert len(result.manual_review) == 0
 
     def test_illegal_transition_raises_conflict(
-        self, monkeypatch, fake_repo, now
+        self, fake_repo, now
     ):
         """从非法状态（如 COMPLETED）恢复应抛 ConflictError."""
         item = make_item(
@@ -208,16 +193,11 @@ class TestRecoverExpired:
         fake_repo._expired_items = [item]
         fake_repo._items["q-1"] = item
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
         with pytest.raises(ConflictError):
-            recover_expired(FakeSession(), now)
+            recover_expired(fake_repo, now)
 
     def test_mixed_expired_below_and_above_max(
-        self, monkeypatch, fake_repo, now
+        self, fake_repo, now
     ):
         """混合场景：部分 requeue，部分 manual_review."""
         item1 = make_item(
@@ -233,19 +213,14 @@ class TestRecoverExpired:
         fake_repo._items["q-1"] = item1
         fake_repo._items["q-2"] = item2
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
-        result = recover_expired(FakeSession(), now)
+        result = recover_expired(fake_repo, now)
 
         assert len(result.requeued) == 1
         assert len(result.manual_review) == 1
         assert result.requeued[0].id == "q-1"
         assert result.manual_review[0].id == "q-2"
 
-    def test_custom_max_attempts(self, monkeypatch, fake_repo, now):
+    def test_custom_max_attempts(self, fake_repo, now):
         """自定义 max_attempts=5，attempt_count=5 仍触发 REQUeued."""
         item = make_item(
             "q-1", state=QueueState.CLAIMED, attempt_count=4
@@ -254,12 +229,7 @@ class TestRecoverExpired:
         fake_repo._expired_items = [item]
         fake_repo._items["q-1"] = item
 
-        monkeypatch.setattr(
-            "backend.application.services.recovery_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-
-        result = recover_expired(FakeSession(), now, max_attempts=5)
+        result = recover_expired(fake_repo, now, max_attempts=5)
 
         assert len(result.requeued) == 1
         assert len(result.manual_review) == 0

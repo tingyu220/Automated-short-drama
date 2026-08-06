@@ -99,87 +99,59 @@ def make_item(
 
 class TestClaimNextTask:
 
-    def test_claim_success_returns_item(self, monkeypatch, fake_repo):
+    def test_claim_success_returns_item(self, fake_repo):
         item = make_item(state=QueueState.CLAIMED, claimed_by="worker-1")
         fake_repo._next_item = item
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-        result = claim_next_task(FakeSession(), "worker-1", lease_seconds=60)
+        result = claim_next_task(fake_repo, "worker-1", lease_seconds=60)
         assert result is not None
         assert result.state == QueueState.CLAIMED
         assert result.claimed_by == "worker-1"
 
-    def test_claim_passes_aware_utc_now(self, monkeypatch, fake_repo):
+    def test_claim_passes_aware_utc_now(self, fake_repo):
         """claim_next_task 必须向仓储传入 aware UTC 的当前时间。"""
         item = make_item(state=QueueState.CLAIMED, claimed_by="worker-1")
         fake_repo._next_item = item
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
 
-        claim_next_task(FakeSession(), "worker-1", lease_seconds=60)
+        claim_next_task(fake_repo, "worker-1", lease_seconds=60)
 
         recorded = fake_repo._claim_next_calls[0][2]
         assert recorded.tzinfo is not None
         assert recorded.utcoffset() == timedelta(0)
 
-    def test_claim_accepts_explicit_utc_now(self, monkeypatch, fake_repo):
+    def test_claim_accepts_explicit_utc_now(self, fake_repo):
         """显式传入 now 时应原样按 aware UTC 传给仓储。"""
         fixed = datetime(2026, 8, 7, 16, 30, tzinfo=timezone.utc)
         item = make_item(state=QueueState.CLAIMED, claimed_by="worker-1")
         fake_repo._next_item = item
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
 
-        claim_next_task(FakeSession(), "worker-1", lease_seconds=60, now=fixed)
+        claim_next_task(fake_repo, "worker-1", lease_seconds=60, now=fixed)
 
         assert fake_repo._claim_next_calls[0][2] == fixed
 
-    def test_claim_no_available_returns_none(self, monkeypatch, fake_repo):
+    def test_claim_no_available_returns_none(self, fake_repo):
         fake_repo._next_item = None
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-        result = claim_next_task(FakeSession(), "worker-1")
+        result = claim_next_task(fake_repo, "worker-1")
         assert result is None
 
 
 class TestReleaseClaimed:
 
-    def test_release_success(self, monkeypatch, fake_repo):
+    def test_release_success(self, fake_repo):
         item = make_item("q-1", state=QueueState.CLAIMED, claimed_by="worker-1")
         fake_repo._items["q-1"] = item
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
-        ok = release_claimed(FakeSession(), "q-1", "worker-1")
+        ok = release_claimed(fake_repo, "q-1", "worker-1")
         assert ok is True
         updated = fake_repo.get("q-1")
         assert updated.state == QueueState.QUEUED
         assert updated.claimed_by is None
         assert updated.lease_until is None
 
-    def test_release_wrong_worker_raises_conflict(self, monkeypatch, fake_repo):
+    def test_release_wrong_worker_raises_conflict(self, fake_repo):
         item = make_item("q-1", state=QueueState.CLAIMED, claimed_by="worker-A")
         fake_repo._items["q-1"] = item
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
         with pytest.raises(ConflictError):
-            release_claimed(FakeSession(), "q-1", "worker-B")
+            release_claimed(fake_repo, "q-1", "worker-B")
 
-    def test_release_nonexistent_raises_not_found(self, monkeypatch, fake_repo):
-        monkeypatch.setattr(
-            "backend.application.services.claim_service.SqlAlchemyQueueRepository",
-            lambda session: fake_repo,
-        )
+    def test_release_nonexistent_raises_not_found(self, fake_repo):
         with pytest.raises(NotFoundError):
-            release_claimed(FakeSession(), "nonexistent", "worker-1")
+            release_claimed(fake_repo, "nonexistent", "worker-1")
