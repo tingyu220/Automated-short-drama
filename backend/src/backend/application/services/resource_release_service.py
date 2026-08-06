@@ -12,14 +12,10 @@ from backend.application.services import worker_heartbeat
 from backend.application.services.completion_service import complete_task
 from backend.domain.common.timezones import as_utc
 from backend.domain.ledger.task_ledger import TaskLedger
-from backend.infrastructure.database.repositories.ledger_repository import (
-    SqlAlchemyLedgerRepository,
-)
-from backend.infrastructure.database.repositories.queue_repository import (
-    SqlAlchemyQueueRepository,
-)
-from backend.infrastructure.database.repositories.task_repository import (
-    SqlAlchemyTaskRepository,
+from backend.domain.ports.repositories import (
+    LedgerRepository,
+    QueueRepository,
+    TaskRepository,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +38,9 @@ class ResourceReleaseService:
         queue_item_id: str,
         worker_id: str,
         ledger_fields: dict | None,
+        queue_repo: QueueRepository,
+        task_repo: TaskRepository,
+        ledger_repo: LedgerRepository,
         browser_session: BrowserSession | None = None,
         release_lease: Callable[[Session, str], bool] | None = None,
     ) -> TaskLedger:
@@ -58,9 +57,6 @@ class ResourceReleaseService:
         Returns:
             生成的任务台账。
         """
-        queue_repo = SqlAlchemyQueueRepository(session)
-        task_repo = SqlAlchemyTaskRepository(session)
-        ledger_repo = SqlAlchemyLedgerRepository(session)
         ledger = complete_task(
             queue_item_id,
             worker_id,

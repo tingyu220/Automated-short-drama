@@ -18,6 +18,15 @@ from backend.application.services.resource_release_service import (
 from backend.domain.queue.queue_item import QueueState
 from backend.domain.worker.worker_lease import STATUS_RUNNING, STATUS_STOPPED
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.repositories.ledger_repository import (
+    SqlAlchemyLedgerRepository,
+)
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
+from backend.infrastructure.database.repositories.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 
 
 def _setup_temp_db(db_url: str):
@@ -108,6 +117,9 @@ class TestResourceReleaseIntegration:
                             "product_id": "prod-456",
                             "task_name": "my-task",
                         },
+                        queue_repo=SqlAlchemyQueueRepository(session),
+                        task_repo=SqlAlchemyTaskRepository(session),
+                        ledger_repo=SqlAlchemyLedgerRepository(session),
                         browser_session=browser,
                     )
                     session.commit()
