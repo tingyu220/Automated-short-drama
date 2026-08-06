@@ -176,7 +176,7 @@ class TestPhase10FullScenario:
         }
         assert bundle.feishu.written_links == {}
 
-    def test_tomato_dry_run_default_settings_completes_without_submit(
+    def test_tomato_dry_run_explicit_settings_completes_without_submit(
         self, db_session: Session, monkeypatch
     ) -> None:
         monkeypatch.delenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", raising=False)

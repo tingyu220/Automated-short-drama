@@ -127,9 +127,14 @@ Dry Run / Mock 阶段不写飞书表、不真提交、不写 M=1。
 - E 时间未到不打开番茄、不搜索、不占页面；
 - J/K/L 提取成功后回填；M=1 仅在“真实提交且巨量V2 状态=已完成”后写入；
 
-Worker 完成链路风险说明：当前 StandardDeliveryService 内部先写 M=1、再生成内存台账，
-Worker 侧随后落正式台账；若最终事务提交失败，可能出现“M=1 已写、正式台账缺失”的外部副作用。
+Worker 完成链路风险说明：当前 StandardDeliveryService 先向注入的台账仓储写入内存台账、
+随后调用 write_completion（M=1），Worker 侧随后落正式台账；若最终事务提交失败，
+可能出现“M=1 已写、正式台账缺失”的外部副作用。
 真实链路接入前必须改为延迟写 M=1 或失败补偿，Mock 验收阶段不受影响。
+
+Worker 执行器开关说明：Mock 验收阶段 `build_worker_executor` 默认
+`use_real_adapters=True`，与 CLI Mock 模式一致地模拟完整提交链路；接入真实 bundle 时
+必须显式传 `False`，真实提交仍由 `WORKBUDDY_ALLOW_FINAL_SUBMIT` 把关。
 - 失败原因不写表，只存本地 SQLite + `data/`。
 
 ### 6.2 iaa账户
