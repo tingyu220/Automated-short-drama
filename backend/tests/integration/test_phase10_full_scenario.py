@@ -118,7 +118,7 @@ def _process(
     *,
     account_rows: list[AccountRow] | None = None,
     settings: Settings | None = None,
-    use_real_adapters: bool = True,
+    use_real_adapters: bool = False,
 ) -> tuple:
     """用真实编排 executor 处理已领取任务并提交事务。"""
     settings = settings or Settings(allow_final_submit=True)
@@ -157,7 +157,7 @@ class TestPhase10FullScenario:
         assert claimed is not None
 
         result, queue_repo, task_repo, ledger_repo, event_repo = _process(
-            db_session, bundle, claimed
+            db_session, bundle, claimed, use_real_adapters=True
         )
 
         assert result.final_queue_state == QueueState.COMPLETED
