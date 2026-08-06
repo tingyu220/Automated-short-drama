@@ -1,8 +1,9 @@
 """飞书 Adapter Mock 实现 —— 内存态、确定性、无网络."""
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
+from backend.domain.common.timezones import SHANGHAI_TZ, as_utc
 from backend.domain.ports.adapters import FeishuAdapter
 from backend.domain.tasks.drama_task import DramaTask
 
@@ -18,7 +19,11 @@ class MockFeishuAdapter(FeishuAdapter):
     def fetch_tasks(self, day: date) -> list[DramaTask]:
         if self._tasks is None:
             return self._sample_tasks(day)
-        return [task for task in self._tasks if task.available_time.date() == day]
+        return [
+            task
+            for task in self._tasks
+            if _in_local_day(task.available_time, day)
+        ]
 
     def write_links(self, task_id: str, links: dict[str, str]) -> None:
         self._written_links[task_id] = dict(links)
@@ -52,3 +57,15 @@ class MockFeishuAdapter(FeishuAdapter):
                 available_time=base_time,
             ),
         ]
+
+
+def _in_local_day(available_time: datetime, day: date) -> bool:
+    """判断 aware UTC 投放时间是否落在本地东八区指定日期。"""
+    local_start = datetime.combine(day, time.min, tzinfo=SHANGHAI_TZ)
+    local_end = datetime.combine(
+        day + timedelta(days=1),
+        time.min,
+        tzinfo=SHANGHAI_TZ,
+    )
+    value = as_utc(available_time)
+    return as_utc(local_start) <= value < as_utc(local_end)

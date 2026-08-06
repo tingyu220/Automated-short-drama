@@ -11,7 +11,10 @@ from alembic.config import Config
 from sqlalchemy import text as sa_text
 
 from backend.domain.errors.domain_error import ConfigurationError
-from backend.infrastructure.database.backup import backup_database
+from backend.infrastructure.database.backup import (
+    _unique_backup_path,
+    backup_database,
+)
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.session import SessionLocal
 
@@ -126,6 +129,37 @@ class TestBackup:
 
             assert first != second
             assert first.exists() and second.exists()
+
+    def test_backup_preserves_wal_committed_data(self):
+        """WAL 未 checkpoint 时备份仍包含已提交数据。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "wal.db"
+            conn = sqlite3.connect(source)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("CREATE TABLE t (x INTEGER)")
+            conn.execute("INSERT INTO t VALUES (7)")
+            conn.commit()
+            backup_dir = tmp / "backups"
+
+            result = backup_database(source, backup_dir)
+
+            check = sqlite3.connect(result)
+            try:
+                assert check.execute("SELECT x FROM t").fetchall() == [(7,)]
+            finally:
+                check.close()
+                conn.close()
+
+    def test_unique_backup_path_appends_counter(self):
+        """已有同名备份时追加序号而不是覆盖。"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = Path(tmpdir)
+            (backup_dir / "app-1.db").write_text("existing")
+
+            result = _unique_backup_path(backup_dir, "app-1.db")
+
+            assert result == backup_dir / "app-1-1.db"
 
     def test_backup_source_not_found_raises(self):
         """源文件不存在时抛出 ConfigurationError。"""
