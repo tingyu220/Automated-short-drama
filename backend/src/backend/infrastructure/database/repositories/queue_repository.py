@@ -63,6 +63,28 @@ class SqlAlchemyQueueRepository:
         records = self._session.execute(stmt).scalars().all()
         return [self._to_domain(r) for r in records]
 
+    def list_all(self) -> list[QueueItem]:
+        """列出全部队列项，按创建时间倒序。"""
+        stmt = select(QueueItemRecord).order_by(
+            QueueItemRecord.created_at.desc(),
+            QueueItemRecord.id.desc(),
+        )
+        records = self._session.execute(stmt).scalars().all()
+        return [self._to_domain(r) for r in records]
+
+    def list_by_task(self, task_id: str) -> list[QueueItem]:
+        """按任务列出队列项，按创建时间倒序。"""
+        stmt = (
+            select(QueueItemRecord)
+            .where(QueueItemRecord.task_id == task_id)
+            .order_by(
+                QueueItemRecord.created_at.desc(),
+                QueueItemRecord.id.desc(),
+            )
+        )
+        records = self._session.execute(stmt).scalars().all()
+        return [self._to_domain(r) for r in records]
+
     # ---- 扩展方法 ----
 
     def claim_next(

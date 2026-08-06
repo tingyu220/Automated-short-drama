@@ -56,6 +56,34 @@ class SqlAlchemyTaskRepository:
         records = self._session.execute(stmt).scalars().all()
         return [self._to_domain(r) for r in records]
 
+    def list_by_filters(
+        self,
+        *,
+        platform: str | None = None,
+        status: str | None = None,
+        q: str | None = None,
+        available_from: datetime | None = None,
+        available_to: datetime | None = None,
+    ) -> list[DramaTask]:
+        """按筛选条件列出任务，按 available_time 降序。"""
+        stmt = select(DramaTaskRecord)
+        if platform:
+            stmt = stmt.where(DramaTaskRecord.platform == platform)
+        if status:
+            stmt = stmt.where(DramaTaskRecord.status == status)
+        if q:
+            stmt = stmt.where(DramaTaskRecord.drama_name.like(f"%{q}%"))
+        if available_from is not None:
+            stmt = stmt.where(DramaTaskRecord.available_time >= available_from)
+        if available_to is not None:
+            stmt = stmt.where(DramaTaskRecord.available_time < available_to)
+        stmt = stmt.order_by(
+            DramaTaskRecord.available_time.desc(),
+            DramaTaskRecord.id.desc(),
+        )
+        records = self._session.execute(stmt).scalars().all()
+        return [self._to_domain(r) for r in records]
+
     @staticmethod
     def _to_domain(record: DramaTaskRecord) -> DramaTask:
         """ORM → 领域模型."""

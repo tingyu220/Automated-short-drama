@@ -1,6 +1,7 @@
 """Repository Protocol 接口 —— Domain 层不依赖 SQLAlchemy."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from backend.domain.tasks.drama_task import DramaTask
@@ -23,6 +24,15 @@ class TaskRepository(Protocol):
     def get(self, task_id: str) -> DramaTask | None: ...
     def update(self, task: DramaTask) -> DramaTask: ...
     def list_by_state(self, state: str) -> list[DramaTask]: ...
+    def list_by_filters(
+        self,
+        *,
+        platform: str | None = None,
+        status: str | None = None,
+        q: str | None = None,
+        available_from: datetime | None = None,
+        available_to: datetime | None = None,
+    ) -> list[DramaTask]: ...
 
 
 class QueueRepository(Protocol):
@@ -32,6 +42,8 @@ class QueueRepository(Protocol):
     def get(self, item_id: str) -> QueueItem | None: ...
     def update(self, item: QueueItem) -> QueueItem: ...
     def list_by_state(self, state: str) -> list[QueueItem]: ...
+    def list_all(self) -> list[QueueItem]: ...
+    def list_by_task(self, task_id: str) -> list[QueueItem]: ...
 
 
 class WorkflowRepository(Protocol):
