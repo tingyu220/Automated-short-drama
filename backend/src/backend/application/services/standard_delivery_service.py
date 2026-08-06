@@ -166,7 +166,21 @@ class StandardDeliveryService:
             completed_at=now,
         )
         saved = self._ledger_repo.add(ledger)
-        self._feishu.write_completion(task_id)
+        try:
+            self._feishu.write_completion(task_id)
+        except Exception:
+            logger.exception(
+                "M=1 写入失败，台账标记 FAILED: task_id=%s ledger_id=%s",
+                task_id,
+                saved.id,
+            )
+            saved.final_status = "FAILED"
+            self._ledger_repo.update(saved)
+            return DeliveryOutcome(
+                status=MANUAL_REVIEW,
+                external_task_id=external_task_id,
+                ledger_id=saved.id,
+            )
         return DeliveryOutcome(
             status=COMPLETED,
             external_task_id=external_task_id,

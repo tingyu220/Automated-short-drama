@@ -308,3 +308,27 @@ class TestStandardDeliveryService:
         assert outcome.external_task_id
         assert outcome.ledger_id is None
         assert feishu.read_status("task-1") == "PENDING"
+
+    def test_m_write_failure_marks_ledger_failed(self) -> None:
+        class FailingWriteFeishu(MockFeishuAdapter):
+            def write_completion(self, task_id: str) -> None:
+                raise ExternalAdapterError("M写入失败")
+
+        ledger_repo = FakeLedgerRepository()
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=RecordingDeliveryAdapter(),
+            feishu=FailingWriteFeishu(),
+            ledger_repo=ledger_repo,
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+
+        outcome = service.execute(
+            _spec(), [], "task-1", True, True, "worker-1"
+        )
+
+        assert outcome.status == MANUAL_REVIEW
+        assert outcome.ledger_id is not None
+        ledgers = ledger_repo.list_all()
+        assert len(ledgers) == 1
+        assert ledgers[0].final_status == "FAILED"

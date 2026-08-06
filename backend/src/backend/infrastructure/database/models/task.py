@@ -114,7 +114,7 @@ class TaskLedgerRecord(Base):
     __tablename__ = "task_ledger"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    task_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     drama_name: Mapped[str] = mapped_column(String(256), nullable=False)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     album_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
