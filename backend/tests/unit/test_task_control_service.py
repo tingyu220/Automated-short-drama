@@ -1,7 +1,7 @@
 """task_control_service 单元测试 —— 使用 fake repositories 注入."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -14,7 +14,7 @@ from backend.application.services.task_control_service import (
 )
 from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.queue.queue_item import QueueItem, QueueState
-from backend.domain.tasks.drama_task import DramaTask
+from backend.domain.tasks.drama_task import DramaTask, TaskStatus
 
 
 class FakeQueueRepository:
@@ -315,6 +315,63 @@ class TestRetryTask:
 
         with pytest.raises(NotFoundError):
             retry_task(queue_repo, task_repo, "missing")
+
+
+class TestTaskStatusSync:
+    """队列控制操作联动更新 DramaTask 状态。"""
+
+    def _task_repo(self, status: str) -> FakeTaskRepository:
+        return FakeTaskRepository(
+            {
+                "task-1": DramaTask(
+                    id="task-1",
+                    drama_name="测试剧",
+                    platform="TOMATO",
+                    available_time=datetime(2026, 8, 6, tzinfo=timezone.utc),
+                    status=status,
+                )
+            }
+        )
+
+    def test_pause_and_resume_sync_task_status(self):
+        item = make_item("qi-1", QueueState.RUNNING, "worker-1")
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = self._task_repo(TaskStatus.RUNNING)
+
+        pause_task(queue_repo, task_repo, "qi-1", "worker-1")
+
+        assert task_repo.get("task-1").status == TaskStatus.RUNNING
+        resume_task(queue_repo, task_repo, "qi-1")
+        assert task_repo.get("task-1").status == TaskStatus.READY
+
+    def test_cancel_syncs_task_status(self):
+        item = make_item("qi-1", QueueState.QUEUED)
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = self._task_repo(TaskStatus.READY)
+
+        cancel_task(queue_repo, task_repo, "qi-1", "worker-1")
+
+        assert task_repo.get("task-1").status == TaskStatus.CANCELLED
+
+    def test_retry_syncs_task_status(self):
+        item = make_item(
+            "qi-1", QueueState.MANUAL_REVIEW, "worker-1", attempt_count=2
+        )
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = self._task_repo(TaskStatus.MANUAL_REVIEW)
+
+        retry_task(queue_repo, task_repo, "qi-1")
+
+        assert task_repo.get("task-1").status == TaskStatus.READY
+
+    def test_manual_review_syncs_task_status(self):
+        item = make_item("qi-1", QueueState.RUNNING, "worker-1")
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = self._task_repo(TaskStatus.RUNNING)
+
+        mark_manual_review(queue_repo, task_repo, "qi-1", "worker-1")
+
+        assert task_repo.get("task-1").status == TaskStatus.MANUAL_REVIEW
 
 
 class TestMarkManualReview:

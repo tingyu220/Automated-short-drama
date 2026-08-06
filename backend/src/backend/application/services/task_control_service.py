@@ -5,6 +5,7 @@ from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.ports.repositories import QueueRepository, TaskRepository
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.domain.queue.state_machine import QueueStateMachine
+from backend.domain.tasks.drama_task import TaskStatus
 
 
 def _get_item(queue_repo: QueueRepository, queue_item_id: str) -> QueueItem:
@@ -29,6 +30,19 @@ def _clear_claim(item: QueueItem) -> None:
     item.lease_until = None
 
 
+def _sync_task_status(
+    task_repo: TaskRepository,
+    task_id: str,
+    status: str,
+) -> None:
+    """联动更新 DramaTask 生命周期状态；任务不存在时保持队列操作可用。"""
+    task = task_repo.get(task_id)
+    if task is None:
+        return
+    task.status = status
+    task_repo.update(task)
+
+
 def pause_task(
     queue_repo: QueueRepository,
     task_repo: TaskRepository,
@@ -41,6 +55,7 @@ def pause_task(
         _require_worker(item, worker_id)
     item.state = QueueStateMachine.transition(item.state, QueueState.PAUSED)
     _clear_claim(item)
+    _sync_task_status(task_repo, item.task_id, TaskStatus.RUNNING)
     return queue_repo.update(item)
 
 
@@ -56,6 +71,7 @@ def resume_task(
             f"QueueItem {queue_item_id} 状态为 {item.state}，不允许恢复"
         )
     item.state = QueueStateMachine.transition(item.state, QueueState.QUEUED)
+    _sync_task_status(task_repo, item.task_id, TaskStatus.READY)
     return queue_repo.update(item)
 
 
@@ -73,6 +89,7 @@ def cancel_task(
         _require_worker(item, worker_id)
     item.state = QueueStateMachine.transition(item.state, QueueState.CANCELLED)
     _clear_claim(item)
+    _sync_task_status(task_repo, item.task_id, TaskStatus.CANCELLED)
     return queue_repo.update(item)
 
 
@@ -94,6 +111,7 @@ def retry_task(
     item.state = QueueStateMachine.transition(item.state, QueueState.QUEUED)
     item.attempt_count = 0
     _clear_claim(item)
+    _sync_task_status(task_repo, item.task_id, TaskStatus.READY)
     return queue_repo.update(item)
 
 
@@ -114,4 +132,5 @@ def mark_manual_review(
         item.state, QueueState.MANUAL_REVIEW
     )
     _clear_claim(item)
+    _sync_task_status(task_repo, item.task_id, TaskStatus.MANUAL_REVIEW)
     return queue_repo.update(item)
