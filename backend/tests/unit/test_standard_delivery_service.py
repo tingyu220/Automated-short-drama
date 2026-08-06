@@ -152,6 +152,8 @@ def _service(
     feishu: MockFeishuAdapter,
     ledger_repo: FakeLedgerRepository,
     task_repo: FakeTaskRepository,
+    allow_final_submit: bool | None = True,
+    use_real_adapters: bool | None = True,
 ) -> StandardDeliveryService:
     return StandardDeliveryService(
         validation,
@@ -161,6 +163,8 @@ def _service(
         feishu,
         ledger_repo,
         task_repo,
+        allow_final_submit=allow_final_submit,
+        use_real_adapters=use_real_adapters,
     )
 
 
@@ -180,10 +184,12 @@ class TestStandardDeliveryService:
             feishu=feishu,
             ledger_repo=ledger_repo,
             task_repo=FakeTaskRepository({"task-1": _task()}),
+            allow_final_submit=None,
+            use_real_adapters=None,
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == VALIDATION_FAILED
@@ -204,10 +210,12 @@ class TestStandardDeliveryService:
             feishu=feishu,
             ledger_repo=ledger_repo,
             task_repo=FakeTaskRepository({"task-1": _task()}),
+            allow_final_submit=False,
+            use_real_adapters=True,
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", False, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == DRY_RUN
@@ -217,6 +225,31 @@ class TestStandardDeliveryService:
             "FINAL_SUBMIT_DISABLED"
         ]
         assert outcome.issues[0].field == "submit_guard"
+        assert delivery.submit_calls == 0
+        assert feishu.read_status("task-1") == "PENDING"
+        assert ledger_repo.list_all() == []
+
+    def test_default_guard_reads_settings_disabled(self, monkeypatch) -> None:
+        """未注入开关时默认从 Settings 读取且不允许提交。"""
+        monkeypatch.delenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", raising=False)
+        delivery = RecordingDeliveryAdapter()
+        feishu = MockFeishuAdapter()
+        ledger_repo = FakeLedgerRepository()
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=delivery,
+            feishu=feishu,
+            ledger_repo=ledger_repo,
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+            allow_final_submit=None,
+            use_real_adapters=None,
+        )
+
+        outcome = service.execute(
+            _spec(), [], "task-1", "worker-1"
+        )
+
+        assert outcome.status == DRY_RUN
         assert delivery.submit_calls == 0
         assert feishu.read_status("task-1") == "PENDING"
         assert ledger_repo.list_all() == []
@@ -234,7 +267,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == COMPLETED
@@ -260,7 +293,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -281,7 +314,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -301,7 +334,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -324,7 +357,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", True, True, "worker-1"
+            _spec(), [], "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW

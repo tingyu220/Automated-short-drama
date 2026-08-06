@@ -160,6 +160,9 @@ def _service(
     session: Session,
     feishu: MockFeishuAdapter,
     delivery: MockDeliverySystemAdapter | None = None,
+    *,
+    allow_final_submit: bool | None = True,
+    use_real_adapters: bool | None = True,
 ) -> StandardDeliveryService:
     return StandardDeliveryService(
         PlanValidationService(now_provider=lambda: NOW),
@@ -169,6 +172,8 @@ def _service(
         feishu,
         SqlAlchemyLedgerRepository(session),
         SqlAlchemyTaskRepository(session),
+        allow_final_submit=allow_final_submit,
+        use_real_adapters=use_real_adapters,
     )
 
 
@@ -204,8 +209,6 @@ class TestPhase8FullScenario:
             spec,
             _cid_configs(spec),
             TASK_ID,
-            True,
-            True,
             "worker-1",
         )
 
@@ -219,15 +222,18 @@ class TestPhase8FullScenario:
 
     def test_guard_disabled_is_dry_run(self, db_session: Session) -> None:
         feishu = MockFeishuAdapter()
-        service = _service(db_session, feishu)
+        service = _service(
+            db_session,
+            feishu,
+            allow_final_submit=False,
+            use_real_adapters=True,
+        )
         spec = _build_spec(db_session)
 
         outcome = service.execute(
             spec,
             _cid_configs(spec),
             TASK_ID,
-            False,
-            True,
             "worker-1",
         )
 
@@ -248,8 +254,6 @@ class TestPhase8FullScenario:
             spec,
             [],
             TASK_ID,
-            True,
-            True,
             "worker-1",
         )
 
@@ -270,8 +274,6 @@ class TestPhase8FullScenario:
             spec,
             _cid_configs(spec),
             TASK_ID,
-            True,
-            True,
             "worker-1",
         )
 

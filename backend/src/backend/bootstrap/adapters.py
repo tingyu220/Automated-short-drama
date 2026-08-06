@@ -72,15 +72,20 @@ def build_adapters(
     feishu = RealFeishuAdapter(
         task_sheet_url=_required_env(_ENV_FEISHU_URL, "飞书剧目表 URL"),
         task_sheet_name=_required_env(_ENV_FEISHU_NAME, "飞书剧目表名称"),
+        dry_run=False,
     )
     selectors = _load_selectors(settings.config_defaults_dir)
     return AdapterBundle(
         feishu=feishu,
-        tomato=RealTomatoAdapter(selectors=selectors["tomato"], page=page),
-        delivery=RealDeliverySystemAdapter(
-            selectors=selectors["delivery"], page=page
+        tomato=RealTomatoAdapter(
+            selectors=selectors["tomato"], page=page, dry_run=False
         ),
-        ocean=RealOceanEngineAdapter(selectors=selectors["ocean"], page=page),
+        delivery=RealDeliverySystemAdapter(
+            selectors=selectors["delivery"], page=page, dry_run=False
+        ),
+        ocean=RealOceanEngineAdapter(
+            selectors=selectors["ocean"], page=page, dry_run=False
+        ),
     )
 
 

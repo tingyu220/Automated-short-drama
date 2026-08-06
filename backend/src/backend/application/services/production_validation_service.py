@@ -33,8 +33,6 @@ class ProductionStep:
     rule_version: str | None = None
     include_test: bool = False
     task_id: str = ""
-    allow_final_submit: bool = False
-    use_real_adapters: bool = False
     worker_id: str = "production-validation"
 
 
@@ -91,8 +89,6 @@ class ProductionValidationRunner:
                 plan_spec=spec,
                 cid_configs=step.cid_configs,
                 task_id=step.task_id or step.step_name,
-                allow_final_submit=step.allow_final_submit,
-                use_real_adapters=step.use_real_adapters,
                 worker_id=step.worker_id,
             )
             result.status = outcome.status

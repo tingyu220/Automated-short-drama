@@ -124,6 +124,9 @@ def _task() -> DramaTask:
 def _service(
     feishu: MockFeishuAdapter,
     ledger_repo: FakeLedgerRepository,
+    *,
+    allow_final_submit: bool | None = True,
+    use_real_adapters: bool | None = True,
 ) -> StandardDeliveryService:
     return StandardDeliveryService(
         PlanValidationService(now_provider=lambda: NOW),
@@ -133,6 +136,8 @@ def _service(
         feishu,
         ledger_repo,
         FakeTaskRepository({"task-8-3": _task()}),
+        allow_final_submit=allow_final_submit,
+        use_real_adapters=use_real_adapters,
     )
 
 
@@ -148,8 +153,6 @@ class TestStandardDeliveryServiceIntegration:
             _spec(),
             _cid_configs(),
             "task-8-3",
-            True,
-            True,
             "worker-1",
         )
 
@@ -165,14 +168,17 @@ class TestStandardDeliveryServiceIntegration:
     def test_guard_disabled_returns_dry_run_without_m(self) -> None:
         feishu = MockFeishuAdapter()
         ledger_repo = FakeLedgerRepository()
-        service = _service(feishu, ledger_repo)
+        service = _service(
+            feishu,
+            ledger_repo,
+            allow_final_submit=False,
+            use_real_adapters=True,
+        )
 
         outcome = service.execute(
             _spec(),
             _cid_configs(),
             "task-8-3",
-            False,
-            True,
             "worker-1",
         )
 

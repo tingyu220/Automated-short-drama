@@ -63,6 +63,27 @@ def _tomato_task() -> DramaTask:
 class TestDryRunWorkflowGuard:
     """工作流在禁用组合下停在 DRY_RUN 且不调用提交。"""
 
+    def test_defaults_are_safe(self) -> None:
+        """未显式开启开关时默认禁止最终提交。"""
+        delivery = CountingDeliveryAdapter()
+        workflow = DryRunWorkflow(
+            MockTomatoAdapter(),
+            delivery,
+            MockOceanEngineAdapter(),
+            [],
+        )
+
+        result = workflow.run(
+            _tomato_task(),
+            episode_count=40,
+            account_cids=["cid-1"],
+        )
+
+        assert result.final_status == DRY_RUN
+        submit_step = next(step for step in result.steps if step.step == "SUBMIT")
+        assert submit_step.status == "SKIPPED"
+        assert delivery.submit_calls == 0
+
     def test_final_submit_disabled_skips_submit(self) -> None:
         delivery = CountingDeliveryAdapter()
         workflow = DryRunWorkflow(

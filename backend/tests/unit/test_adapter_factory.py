@@ -73,3 +73,18 @@ class TestBuildAdapters:
         assert isinstance(bundle.tomato, RealTomatoAdapter)
         assert isinstance(bundle.delivery, RealDeliverySystemAdapter)
         assert isinstance(bundle.ocean, RealOceanEngineAdapter)
+
+    def test_real_bundle_explicitly_disables_dry_run(self, monkeypatch) -> None:
+        """真实模式必须显式传 dry_run=False，默认路径保持 dry_run。"""
+        monkeypatch.setenv("WORKBUDDY_USE_REAL_ADAPTERS", "true")
+        monkeypatch.setenv(
+            "WORKBUDDY_FEISHU_TASK_SHEET_URL", "https://feishu.cn/sheets/mock"
+        )
+        monkeypatch.setenv("WORKBUDDY_FEISHU_TASK_SHEET_NAME", "剧目表")
+
+        bundle = build_adapters(Settings(), page=FakePage())
+
+        assert bundle.feishu._dry_run is False
+        assert bundle.tomato._dry_run is False
+        assert bundle.delivery._dry_run is False
+        assert bundle.ocean._dry_run is False

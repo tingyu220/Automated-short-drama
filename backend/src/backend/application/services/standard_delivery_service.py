@@ -21,6 +21,7 @@ from backend.domain.ports.adapters import (
     OceanEngineAdapter,
 )
 from backend.domain.ports.repositories import LedgerRepository, TaskRepository
+from backend.infrastructure.config.settings import Settings
 
 VALIDATION_FAILED = "VALIDATION_FAILED"
 DRY_RUN = "DRY_RUN"
@@ -56,14 +57,25 @@ class StandardDeliveryService:
         ledger_repo: LedgerRepository,
         task_repo: TaskRepository,
         *,
+        allow_final_submit: bool | None = None,
+        use_real_adapters: bool | None = None,
         poll_interval_seconds: int = 0,
     ) -> None:
+        settings = Settings()
         self._validation = validation
         self._delivery_flow = DeliveryFlowService(delivery, ocean)
         self._submit_guard = submit_guard
         self._feishu = feishu
         self._ledger_repo = ledger_repo
         self._task_repo = task_repo
+        self._allow_final_submit = (
+            settings.allow_final_submit
+            if allow_final_submit is None
+            else allow_final_submit
+        )
+        self._use_real_adapters = (
+            False if use_real_adapters is None else use_real_adapters
+        )
         self._poll_interval_seconds = poll_interval_seconds
 
     def execute(
@@ -71,8 +83,6 @@ class StandardDeliveryService:
         plan_spec: PlanSpec,
         cid_configs: list[dict],
         task_id: str,
-        allow_final_submit: bool,
-        use_real_adapters: bool,
         worker_id: str,
     ) -> DeliveryOutcome:
         """执行标准投放，返回 COMPLETED / DRY_RUN / MANUAL_REVIEW / VALIDATION_FAILED。"""
@@ -84,7 +94,7 @@ class StandardDeliveryService:
             )
 
         decision = self._submit_guard.can_submit(
-            allow_final_submit, use_real_adapters
+            self._allow_final_submit, self._use_real_adapters
         )
         if not decision.allowed:
             return DeliveryOutcome(

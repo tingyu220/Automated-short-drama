@@ -29,13 +29,13 @@ stdout JSON 中的 `report_path` 指向该文件的绝对路径。
 
 真实模式前置条件：
 
-- 环境变量 `ALLOW_FINAL_SUBMIT=true`；
+- 环境变量 `WORKBUDDY_ALLOW_FINAL_SUBMIT=true`（即 Settings.allow_final_submit=true）；
 - CLI 追加 `--real`；
 - 真实 Adapter 已配置（Settings 指向真实投放/巨量/飞书环境）；
-- CLI 已支持 `--real` 与报告落盘，但完整真实链路需 Task 9.1 Playwright page 补齐后另行验收。
+- CLI 会自行启动 Playwright 页面并在结束后关闭；页面启动失败时输出结构化错误并退出 1。
 
 ```powershell
-$env:ALLOW_FINAL_SUBMIT = "true"
+$env:WORKBUDDY_ALLOW_FINAL_SUBMIT = "true"
 python -m backend.interfaces.cli.production_validation --real --ladder single --plan-type test
 ```
 

@@ -74,8 +74,8 @@ class DryRunWorkflow:
         price_rules: list[TemplatePriceRule],
         *,
         submit_guard: Callable[[bool, bool], SubmitDecision] = can_submit,
-        allow_final_submit: bool = True,
-        use_real_adapters: bool = True,
+        allow_final_submit: bool = False,
+        use_real_adapters: bool = False,
     ) -> None:
         self._tomato = tomato
         self._delivery_flow = DeliveryFlowService(delivery, ocean)

@@ -126,6 +126,8 @@ class TestDryRunWorkflowIntegration:
             delivery,
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(
@@ -157,6 +159,8 @@ class TestDryRunWorkflowIntegration:
             MockDeliverySystemAdapter(),
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
         jubian_links = {
             "IAA": "mock://jubian/剧B/iaa",
@@ -191,6 +195,8 @@ class TestDryRunWorkflowIntegration:
             delivery,
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(
@@ -215,6 +221,8 @@ class TestDryRunWorkflowIntegration:
             MockDeliverySystemAdapter(),
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(

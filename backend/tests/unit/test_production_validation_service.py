@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import pytest
 
@@ -128,8 +129,6 @@ def _step(index: int = 1, task_id: str = "") -> ProductionStep:
         accounts=[{"role": "B1", "cid": f"cid-{index}"}],
         cid_configs=[{"cid": f"cid-{index}"}],
         task_id=task_id or f"task-{index}",
-        allow_final_submit=True,
-        use_real_adapters=True,
     )
 
 
@@ -184,8 +183,8 @@ class TestProductionValidationRunner:
         assert len(delivery.calls) == 1
         call = delivery.calls[0]
         assert call["task_id"] == "task-1"
-        assert call["allow_final_submit"] is True
-        assert call["use_real_adapters"] is True
+        assert "allow_final_submit" not in call
+        assert "use_real_adapters" not in call
 
     def test_single_step_failure_marks_not_passed(self) -> None:
         delivery = FakeDeliveryService(
@@ -331,7 +330,7 @@ class TestProductionValidationCli:
         tmp_path,
         capsys,
     ) -> None:
-        monkeypatch.delenv("ALLOW_FINAL_SUBMIT", raising=False)
+        monkeypatch.delenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", raising=False)
 
         code = cli.main(
             [
@@ -344,7 +343,7 @@ class TestProductionValidationCli:
         )
 
         assert code == 1
-        assert "ALLOW_FINAL_SUBMIT" in capsys.readouterr().err
+        assert "WORKBUDDY_ALLOW_FINAL_SUBMIT" in capsys.readouterr().err
 
     def test_real_mode_rejected_with_false_env(
         self,
@@ -352,7 +351,7 @@ class TestProductionValidationCli:
         tmp_path,
         capsys,
     ) -> None:
-        monkeypatch.setenv("ALLOW_FINAL_SUBMIT", "false")
+        monkeypatch.setenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", "false")
 
         code = cli.main(
             [
@@ -372,13 +371,21 @@ class TestProductionValidationCli:
         tmp_path,
         capsys,
     ) -> None:
-        monkeypatch.setenv("ALLOW_FINAL_SUBMIT", "true")
+        monkeypatch.setenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", "true")
         from backend.bootstrap import adapters as adapters_module
 
         real_build = adapters_module.build_adapters
+        fake_page = object()
+
+        @contextmanager
+        def fake_page_context():
+            yield fake_page
+
+        monkeypatch.setattr(cli, "_open_real_page", fake_page_context)
 
         def fake_build(settings, use_real, page=None):
             assert use_real is True
+            assert page is fake_page
             return real_build(settings, use_real=False, page=None)
 
         monkeypatch.setattr(cli, "build_adapters", fake_build)
@@ -398,3 +405,33 @@ class TestProductionValidationCli:
         assert code == 0
         payload = json.loads(capsys.readouterr().out)
         assert payload["mode"] == "real"
+
+    def test_real_mode_page_failure_returns_structured_error(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
+        monkeypatch.setenv("WORKBUDDY_ALLOW_FINAL_SUBMIT", "true")
+
+        @contextmanager
+        def broken_page():
+            raise RuntimeError("browser launch failed")
+            yield
+
+        monkeypatch.setattr(cli, "_open_real_page", broken_page)
+
+        code = cli.main(
+            [
+                "--real",
+                "--ladder",
+                "single",
+                "--plan-type",
+                "test",
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
+
+        assert code == 1
+        assert "browser launch failed" in capsys.readouterr().err

@@ -4,10 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from backend.application.services import submit_guard
 from backend.application.services.plan_rules import (
@@ -35,7 +36,6 @@ from backend.domain.rules.material_rule_range import MaterialRuleRange
 from backend.domain.tasks.drama_task import DramaTask
 from backend.infrastructure.config.settings import Settings
 
-ALLOW_FINAL_SUBMIT_ENV = "ALLOW_FINAL_SUBMIT"
 # backend/src/backend/interfaces/cli/ -> parents[4]=backend, .parent=项目根
 PROJECT_ROOT = Path(__file__).resolve().parents[4].parent
 DEFAULT_REPORT_DIR = "data/production-validation"
@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         "--real",
         action="store_true",
         default=False,
-        help="真实模式（需环境变量 ALLOW_FINAL_SUBMIT=true 同时开启）",
+        help="真实模式（需 WORKBUDDY_ALLOW_FINAL_SUBMIT=true 同时开启）",
     )
     parser.add_argument(
         "--report-dir",
@@ -140,16 +140,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.real and not _final_submit_enabled():
-        _emit_error("真实模式需要环境变量 ALLOW_FINAL_SUBMIT=true 且 --real 同时开启")
+    if args.real and not Settings().allow_final_submit:
+        _emit_error(
+            "真实模式需要 WORKBUDDY_ALLOW_FINAL_SUBMIT=true 且 --real 同时开启"
+        )
         return 1
 
     steps = _build_steps(LADDER_SIZES[args.ladder], args.plan_type)
     try:
-        runner, mode = _build_pipeline(steps, real=args.real)
-        results = runner.run_ladder(steps)
+        if args.real:
+            with _open_real_page() as page:
+                runner, mode = _build_pipeline(steps, real=True, page=page)
+                results = runner.run_ladder(steps)
+        else:
+            runner, mode = _build_pipeline(steps, real=False)
+            results = runner.run_ladder(steps)
     except DomainError as exc:
         _emit_error(f"{exc.message} (code={exc.code})")
+        return 1
+    except Exception as exc:
+        if not args.real:
+            raise
+        _emit_error(f"真实模式启动失败: {exc}")
         return 1
 
     report_dir = _resolve_report_dir(args.report_dir)
@@ -185,8 +197,18 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if payload["passed"] else 1
 
 
-def _final_submit_enabled() -> bool:
-    return os.getenv(ALLOW_FINAL_SUBMIT_ENV, "").strip().lower() == "true"
+@contextmanager
+def _open_real_page() -> Any:
+    """启动 Playwright 浏览器并生成真实 page；退出时由 CLI 负责关闭。"""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=False)
+        try:
+            page = browser.new_page()
+            yield page
+        finally:
+            browser.close()
 
 
 def _resolve_report_dir(value: str | None) -> Path:
@@ -200,11 +222,12 @@ def _build_pipeline(
     steps: list[ProductionStep],
     *,
     real: bool,
+    page: Any = None,
 ) -> tuple[ProductionValidationRunner, str]:
     """组装标准投放管线；Mock 模式用模拟适配器跑完整执行链。"""
     settings = Settings()
     if real:
-        bundle = build_adapters(settings, use_real=True, page=None)
+        bundle = build_adapters(settings, use_real=True, page=page)
         mode = "real"
     else:
         bundle = build_adapters(settings, use_real=False)
@@ -232,6 +255,8 @@ def _build_pipeline(
         bundle.feishu,
         ledger_repo,
         task_repo,
+        allow_final_submit=settings.allow_final_submit if real else True,
+        use_real_adapters=True,
     )
     runner = ProductionValidationRunner(
         _build_plan_builder(),
@@ -283,8 +308,6 @@ def _build_step(index: int, plan_type: str, effective_from: str) -> ProductionSt
         rule_version="production-validation-mock",
         include_test=plan_type == "test",
         task_id=f"pv-task-{index:02d}",
-        allow_final_submit=True,
-        use_real_adapters=True,
         worker_id="production-validation",
     )
 

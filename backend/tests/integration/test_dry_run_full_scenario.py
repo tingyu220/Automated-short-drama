@@ -156,6 +156,8 @@ class TestDryRunFullScenario:
             delivery,
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(
@@ -184,6 +186,8 @@ class TestDryRunFullScenario:
             MockDeliverySystemAdapter(),
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
         task = _tomato_task()
 
@@ -209,6 +213,8 @@ class TestDryRunFullScenario:
             delivery,
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(
@@ -230,6 +236,8 @@ class TestDryRunFullScenario:
             PageChangedDeliveryAdapter(),
             MockOceanEngineAdapter(),
             price_rules,
+            allow_final_submit=True,
+            use_real_adapters=True,
         )
 
         result = workflow.run(

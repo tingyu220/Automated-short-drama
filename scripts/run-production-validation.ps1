@@ -4,7 +4,7 @@
 .DESCRIPTION
     调用 python -m backend.interfaces.cli.production_validation；
     -Ladder 指定 single/three/five/ten；-PlanType 指定 test/free/paid_9_9/paid_2_9/both；
-    -Real 传入 --real（需环境变量 ALLOW_FINAL_SUBMIT=true）。
+    -Real 传入 --real（需环境变量 WORKBUDDY_ALLOW_FINAL_SUBMIT=true）。
     输出 JSON；全部阶梯通过退出码 0，否则退出码 1。
 #>
 param(
