@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Dry Run 全场景验收：运行 Dry Run 全场景集成测试。
 .DESCRIPTION

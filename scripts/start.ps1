@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     开发模式一键启动：后端 + 前端（Vite）+ Worker。
 .DESCRIPTION

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     运行生产验证阶梯（默认 Mock 模式）。
 .DESCRIPTION

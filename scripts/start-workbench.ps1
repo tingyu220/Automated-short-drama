@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     正式模式一键启动：构建前端 + 后端托管静态资源 + Worker。
 .DESCRIPTION

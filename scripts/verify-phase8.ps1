@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Phase 8 集成验收：运行 Phase 8 全场景集成测试。
 .DESCRIPTION
