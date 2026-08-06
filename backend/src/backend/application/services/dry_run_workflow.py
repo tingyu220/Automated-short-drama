@@ -5,8 +5,10 @@ Dry Run 只使用 Mock/内存适配器，不写飞书表、不写 M=1。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from backend.application.services.delivery_flow_service import DeliveryFlowService
+from backend.application.services.submit_guard import SubmitDecision, can_submit
 from backend.application.services.tomato_extraction_service import extract_iaa, scan_iap
 from backend.domain.errors.domain_error import DomainError, ValidationError
 from backend.domain.plans.plan_spec import PlanSpec
@@ -21,8 +23,10 @@ from backend.domain.tasks.drama_task import DramaTask
 
 COMPLETED = "COMPLETED"
 MANUAL_REVIEW = "MANUAL_REVIEW"
+DRY_RUN = "DRY_RUN"
 STEP_OK = "OK"
 STEP_FAILED = "FAILED"
+STEP_SKIPPED = "SKIPPED"
 
 _LINK_TYPES = ("IAA", "2.9", "9.9")
 _STEP_LINK_EXTRACTION = "LINK_EXTRACTION"
@@ -68,10 +72,17 @@ class DryRunWorkflow:
         delivery: DeliverySystemAdapter,
         ocean: OceanEngineAdapter,
         price_rules: list[TemplatePriceRule],
+        *,
+        submit_guard: Callable[[bool, bool], SubmitDecision] = can_submit,
+        allow_final_submit: bool = True,
+        use_real_adapters: bool = True,
     ) -> None:
         self._tomato = tomato
         self._delivery_flow = DeliveryFlowService(delivery, ocean)
         self._price_rules = price_rules
+        self._submit_guard = submit_guard
+        self._allow_final_submit = allow_final_submit
+        self._use_real_adapters = use_real_adapters
 
     def run(
         self,
@@ -335,6 +346,19 @@ class DryRunWorkflow:
         result: DryRunResult,
         plan_spec: PlanSpec,
     ) -> str | None:
+        decision = self._submit_guard(
+            self._allow_final_submit, self._use_real_adapters
+        )
+        if not decision.allowed:
+            result.final_status = DRY_RUN
+            result.steps.append(
+                WorkflowStepResult(
+                    step=_STEP_SUBMIT,
+                    status=STEP_SKIPPED,
+                    detail=f"提交被安全开关拦截: {decision.reason}",
+                )
+            )
+            return None
         try:
             external_task_id = self._delivery_flow.submit_plan(plan_spec)
         except Exception as exc:
