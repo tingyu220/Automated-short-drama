@@ -27,6 +27,8 @@ from backend.application.services.worker_execution import (
     WorkerExecutionService,
     mock_worker_executor,
 )
+from backend.application.services.worker_executor import build_worker_executor
+from backend.bootstrap.adapters import build_adapters
 from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.engine import create_app_engine
@@ -76,6 +78,7 @@ def _run_cycle(
     pid: int,
     lease_seconds: int,
     skip_execution: bool = False,
+    use_mock_executor: bool = False,
 ) -> str:
     """执行一轮 Worker cycle：心跳 + 队列推进 + 认领任务执行。"""
     lease = heartbeat(session, worker_id, host, pid, lease_seconds)
@@ -98,8 +101,17 @@ def _run_cycle(
         task_repo = SqlAlchemyTaskRepository(session)
         ledger_repo = SqlAlchemyLedgerRepository(session)
         event_repo = SqlAlchemyExecutionRepository(session)
+        if use_mock_executor:
+            executor = mock_worker_executor()
+        else:
+            settings = Settings()
+            executor = build_worker_executor(
+                settings,
+                build_adapters(settings, use_real=False),
+                session,
+            )
         service = WorkerExecutionService(
-            mock_worker_executor(),
+            executor,
             queue_repo,
             task_repo,
             ledger_repo,
@@ -169,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         help="跳过任务执行循环，仅保持心跳",
     )
     parser.add_argument(
+        "--mock-executor",
+        action="store_true",
+        default=False,
+        help="回退到旧 Mock executor（默认使用真实编排 executor）",
+    )
+    parser.add_argument(
         "--defaults-path",
         type=Path,
         default=None,
@@ -208,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
                 pid,
                 lease_seconds,
                 skip_execution=args.skip_execution,
+                use_mock_executor=args.mock_executor,
             )
             print(f"Worker {worker_id}: {summary}")
             return 0
@@ -222,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                     pid,
                     lease_seconds,
                     skip_execution=args.skip_execution,
+                    use_mock_executor=args.mock_executor,
                 )
                 print(f"Worker {worker_id}: {summary}")
             except KeyboardInterrupt:
