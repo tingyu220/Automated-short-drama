@@ -99,6 +99,9 @@ class LedgerView(BaseModel):
     platform: str
     final_status: str
     completed_at: datetime | None
+    task_name: str = ""
+    external_task_id: str = ""
+    rule_version: str = ""
 
 
 class ExecutionEventView(BaseModel):
@@ -146,3 +149,10 @@ class ExceptionView(BaseModel):
     level: str
     message: str
     occurred_at: datetime
+    drama_name: str | None = None
+    platform: str | None = None
+    error_type: str | None = None
+    step: str | None = None
+    retry_count: int | None = None
+    screenshots: list[str] | None = None
+    stack_trace: str | None = None

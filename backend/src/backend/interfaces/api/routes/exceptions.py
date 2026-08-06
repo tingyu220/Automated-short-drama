@@ -33,6 +33,9 @@ def list_exceptions(db: Session = Depends(get_db)):
     """合并 ERROR 执行事件与 MANUAL_REVIEW 任务，按时间降序。"""
     exec_repo = SqlAlchemyExecutionRepository(db)
     task_repo = SqlAlchemyTaskRepository(db)
+    task_by_id = {
+        task.id: task for task in task_repo.list_by_filters()
+    }
 
     items: list[ExceptionView] = [
         ExceptionView(
@@ -41,6 +44,18 @@ def list_exceptions(db: Session = Depends(get_db)):
             level=event.level,
             message=event.message,
             occurred_at=event.occurred_at,
+            drama_name=(
+                task_by_id[event.task_id].drama_name
+                if event.task_id in task_by_id
+                else None
+            ),
+            platform=(
+                task_by_id[event.task_id].platform
+                if event.task_id in task_by_id
+                else None
+            ),
+            error_type=event.event_type,
+            step=event.event_type,
         )
         for event in exec_repo.list_events(level=EventLevel.ERROR)
     ]
@@ -51,6 +66,9 @@ def list_exceptions(db: Session = Depends(get_db)):
             level=TaskStatus.MANUAL_REVIEW,
             message=_MANUAL_REVIEW_MESSAGE,
             occurred_at=task.updated_at,
+            drama_name=task.drama_name,
+            platform=task.platform,
+            error_type=TaskStatus.MANUAL_REVIEW,
         )
         for task in task_repo.list_by_state(TaskStatus.MANUAL_REVIEW)
     )
