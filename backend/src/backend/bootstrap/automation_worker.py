@@ -1,7 +1,7 @@
 """Automation Worker 启动入口.
 
 用法:
-    python -m backend.bootstrap.automation_worker [--worker-id ID] [--interval N] [--lease-seconds N] [--once] [--skip-seed]
+    python -m backend.bootstrap.automation_worker [--worker-id ID] [--interval N] [--lease-seconds N] [--once] [--skip-seed] [--skip-execution]
 """
 from __future__ import annotations
 
@@ -11,19 +11,37 @@ import signal
 import socket
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from backend.application.services.queue_cycle import advance_queue
 from backend.application.services.rule_seed_service import seed_rules_from_defaults
 from backend.application.services.worker_heartbeat import (
     acquire_lease,
     heartbeat,
     release_lease,
 )
+from backend.application.services.worker_execution import (
+    WorkerExecutionService,
+    mock_worker_executor,
+)
 from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.repositories.execution_repository import (
+    SqlAlchemyExecutionRepository,
+)
+from backend.infrastructure.database.repositories.ledger_repository import (
+    SqlAlchemyLedgerRepository,
+)
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
+from backend.infrastructure.database.repositories.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 from backend.infrastructure.database.session import SessionLocal
 from backend.infrastructure.database.models.worker import (  # noqa: F401
     WorkerLeaseRecord,
@@ -49,6 +67,54 @@ def _seed_defaults(session: Session, defaults_path: Path | None) -> None:
         f"Worker: 默认规则初始化完成 "
         f"(created={result.created_rules}, skipped={result.skipped_rules})"
     )
+
+
+def _run_cycle(
+    session: Session,
+    worker_id: str,
+    host: str,
+    pid: int,
+    lease_seconds: int,
+    skip_execution: bool = False,
+) -> str:
+    """执行一轮 Worker cycle：心跳 + 队列推进 + 认领任务执行。"""
+    lease = heartbeat(session, worker_id, host, pid, lease_seconds)
+    heartbeat_text = f"心跳 (lease_until={lease.lease_until.isoformat()})"
+    if skip_execution:
+        session.commit()
+        return f"{heartbeat_text}，跳过执行（--skip-execution）"
+
+    now = datetime.now(timezone.utc)
+    try:
+        queue_repo = SqlAlchemyQueueRepository(session)
+        enqueued, claimed = advance_queue(
+            session, queue_repo, now, worker_id, lease_seconds
+        )
+        if claimed is None:
+            session.commit()
+            return f"{heartbeat_text}，入队 {len(enqueued)}，无领取任务"
+
+        task_repo = SqlAlchemyTaskRepository(session)
+        ledger_repo = SqlAlchemyLedgerRepository(session)
+        event_repo = SqlAlchemyExecutionRepository(session)
+        service = WorkerExecutionService(
+            mock_worker_executor(),
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            event_repo,
+            worker_id,
+        )
+        result = service.process_claimed(claimed, now)
+        session.commit()
+        return (
+            f"{heartbeat_text}，入队 {len(enqueued)}，领取 {result.queue_item_id}，"
+            f"最终状态 {result.final_queue_state}，台账 {result.ledger_id or '-'}，"
+            f"事件 {result.event_count}"
+        )
+    except Exception as exc:
+        session.rollback()
+        return f"{heartbeat_text}，cycle 异常已回滚: {exc}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,6 +162,12 @@ def main(argv: list[str] | None = None) -> int:
         help="跳过默认规则初始化导入",
     )
     parser.add_argument(
+        "--skip-execution",
+        action="store_true",
+        default=False,
+        help="跳过任务执行循环，仅保持心跳",
+    )
+    parser.add_argument(
         "--defaults-path",
         type=Path,
         default=None,
@@ -128,17 +200,29 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         if args.once:
-            print("单次心跳完成，退出.")
+            summary = _run_cycle(
+                session,
+                worker_id,
+                host,
+                pid,
+                lease_seconds,
+                skip_execution=args.skip_execution,
+            )
+            print(f"Worker {worker_id}: {summary}")
             return 0
 
         while True:
             try:
                 time.sleep(interval)
-                lease = heartbeat(session, worker_id, host, pid, lease_seconds)
-                print(
-                    f"Worker {worker_id}: 心跳 "
-                    f"(lease_until={lease.lease_until.isoformat()})"
+                summary = _run_cycle(
+                    session,
+                    worker_id,
+                    host,
+                    pid,
+                    lease_seconds,
+                    skip_execution=args.skip_execution,
                 )
+                print(f"Worker {worker_id}: {summary}")
             except KeyboardInterrupt:
                 print(f"\nWorker {worker_id}: 收到中断信号，释放租约...")
                 break

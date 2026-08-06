@@ -71,8 +71,9 @@ class LedgerRepository(Protocol):
 
 
 class ExecutionRepository(Protocol):
-    """ExecutionEvent / ExecutionArtifact 只读查询协议。"""
+    """ExecutionEvent / ExecutionArtifact 仓储协议。"""
 
+    def add_event(self, event: ExecutionEvent) -> ExecutionEvent: ...
     def list_events(
         self,
         *,

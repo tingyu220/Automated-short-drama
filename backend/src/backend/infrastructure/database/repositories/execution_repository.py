@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,10 +16,30 @@ from backend.infrastructure.database.models.execution import (
 
 
 class SqlAlchemyExecutionRepository:
-    """ExecutionRepository 协议的 SQLAlchemy 适配器（只读查询）。"""
+    """ExecutionRepository 协议的 SQLAlchemy 适配器。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def add_event(self, event: ExecutionEvent) -> ExecutionEvent:
+        """写入执行事件，id 缺省生成 UUID，context_json 序列化为 JSON 文本。"""
+        record = ExecutionEventRecord(
+            id=event.id or str(uuid.uuid4()),
+            task_id=event.task_id,
+            event_type=event.event_type,
+            message=event.message,
+            level=event.level,
+            context_json=(
+                json.dumps(event.context_json, ensure_ascii=False)
+                if event.context_json is not None
+                else None
+            ),
+            occurred_at=event.occurred_at,
+            created_at=event.created_at,
+        )
+        self._session.add(record)
+        self._session.flush()
+        return self._to_event(record)
 
     def list_events(
         self,
