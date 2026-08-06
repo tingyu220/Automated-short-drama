@@ -80,6 +80,13 @@ class FakeLedgerRepository:
         self._ledgers[ledger.id] = ledger
         return ledger
 
+    def update(self, ledger: TaskLedger) -> TaskLedger:
+        self._ledgers[ledger.id] = ledger
+        return ledger
+
+    def list_by_task(self, task_id: str) -> list[TaskLedger]:
+        return [l for l in self._ledgers.values() if l.task_id == task_id]
+
 
 class FakeBrowser(BrowserSession):
     """模拟浏览器会话。"""

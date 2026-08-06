@@ -72,9 +72,26 @@ def complete_task(
     task.status = TaskStatus.COMPLETED
     task_repo.update(task)
 
-    # 6. 创建台账
+    # 6. 创建台账；同一 task_id 已有台账时复用更新，保证重试幂等
     fields = ledger_fields or {}
     now = datetime.now(timezone.utc)
+    existing_ledgers = ledger_repo.list_by_task(task.id)
+    if existing_ledgers:
+        ledger = existing_ledgers[0]
+        ledger.final_status = "COMPLETED"
+        ledger.completed_at = now
+        ledger.album_id = fields.get("album_id", ledger.album_id)
+        ledger.product_id = fields.get("product_id", ledger.product_id)
+        ledger.external_task_id = fields.get(
+            "external_task_id", ledger.external_task_id
+        )
+        ledger.task_name = fields.get("task_name", ledger.task_name)
+        ledger.rule_version = fields.get("rule_version", ledger.rule_version)
+        ledger.config_version = fields.get(
+            "config_version", ledger.config_version
+        )
+        return ledger_repo.update(ledger)
+
     ledger = TaskLedger(
         id=str(uuid.uuid4()),
         task_id=task.id,

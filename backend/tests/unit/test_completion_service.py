@@ -50,6 +50,13 @@ class FakeLedgerRepository:
         self._ledgers[ledger.id] = ledger
         return ledger
 
+    def update(self, ledger: TaskLedger) -> TaskLedger:
+        self._ledgers[ledger.id] = ledger
+        return ledger
+
+    def list_by_task(self, task_id: str) -> list[TaskLedger]:
+        return [l for l in self._ledgers.values() if l.task_id == task_id]
+
 
 def make_item(
     item_id: str = "qi-1",
@@ -118,6 +125,37 @@ class TestCompleteTask:
         # 未传字段使用默认空串
         assert result.task_name == ""
         assert result.config_version == ""
+
+    def test_complete_twice_reuses_existing_ledger(self):
+        """同一 task 二次完成复用台账，不重复创建。"""
+        item = make_item("qi-1", QueueState.CLAIMED, "worker-1")
+        task = make_task("task-1")
+        queue_repo = FakeQueueRepository({"qi-1": item})
+        task_repo = FakeTaskRepository({"task-1": task})
+        ledger_repo = FakeLedgerRepository()
+
+        first = complete_task(
+            "qi-1",
+            "worker-1",
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            {"external_task_id": "ext-1"},
+        )
+        item.state = QueueState.CLAIMED
+        second = complete_task(
+            "qi-1",
+            "worker-1",
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            {"external_task_id": "ext-2", "product_id": "prod-2"},
+        )
+
+        assert second.id == first.id
+        assert len(ledger_repo.list_by_task("task-1")) == 1
+        assert second.external_task_id == "ext-2"
+        assert second.product_id == "prod-2"
 
     def test_worker_mismatch_raises_conflict(self):
         """claimed_by 不匹配抛 ConflictError."""
