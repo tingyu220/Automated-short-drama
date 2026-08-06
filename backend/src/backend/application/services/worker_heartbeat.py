@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import or_, update
 from sqlalchemy.orm import Session
 
 from backend.domain.common.timezones import as_utc
@@ -47,21 +48,40 @@ def acquire_lease(
     否则创建或覆盖租约并返回 True.
     """
     now = _now()
+    lease_until = now + timedelta(seconds=lease_seconds)
+    stmt = (
+        update(WorkerLeaseRecord)
+        .where(
+            WorkerLeaseRecord.worker_id == worker_id,
+            or_(
+                WorkerLeaseRecord.status != STATUS_RUNNING,
+                WorkerLeaseRecord.lease_until <= now,
+            ),
+        )
+        .values(
+            host=host,
+            pid=pid,
+            status=STATUS_RUNNING,
+            heartbeat_at=now,
+            lease_until=lease_until,
+        )
+    )
+    result = session.execute(stmt)
+    if result.rowcount > 0:
+        session.flush()
+        return True
+
     existing = session.query(WorkerLeaseRecord).filter(
         WorkerLeaseRecord.status == STATUS_RUNNING,
         WorkerLeaseRecord.lease_until > now,
         WorkerLeaseRecord.worker_id != worker_id,
     ).first()
-
     if existing is not None:
         return False
 
     record = session.query(WorkerLeaseRecord).filter(
         WorkerLeaseRecord.worker_id == worker_id,
     ).first()
-
-    lease_until = now + timedelta(seconds=lease_seconds)
-
     if record is None:
         record = WorkerLeaseRecord(
             worker_id=worker_id,
@@ -78,7 +98,6 @@ def acquire_lease(
         record.status = STATUS_RUNNING
         record.heartbeat_at = now
         record.lease_until = lease_until
-
     session.flush()
     return True
 

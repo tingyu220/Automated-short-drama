@@ -44,6 +44,7 @@ class TestAcquireLease:
     def test_acquire_when_no_existing_lease(self, mock_now):
         """无已有租约时应成功获取."""
         session = MagicMock()
+        session.execute.return_value.rowcount = 0
         q = session.query.return_value
         q.filter.return_value.first.return_value = None
         result = acquire_lease(session, "w1", "host1", 100, 60)
@@ -53,6 +54,7 @@ class TestAcquireLease:
     def test_acquire_rejected_when_other_active(self, mock_now):
         """其他 Worker 持有有效租约时被拒."""
         session = MagicMock()
+        session.execute.return_value.rowcount = 0
         other = _make_record("other-worker")
         session.query.return_value.filter.return_value.first.return_value = other
         result = acquire_lease(session, "w1", "host1", 100, 60)
@@ -62,6 +64,7 @@ class TestAcquireLease:
     def test_acquire_overwrite_own_lease(self, mock_now):
         """自己的旧记录允许覆盖."""
         session = MagicMock()
+        session.execute.return_value.rowcount = 0
         old_self = _make_record("w1")
         q1 = MagicMock()
         q2 = MagicMock()
