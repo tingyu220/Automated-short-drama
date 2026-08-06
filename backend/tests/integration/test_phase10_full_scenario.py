@@ -117,9 +117,10 @@ def _process(
     claimed: QueueItem,
     *,
     account_rows: list[AccountRow] | None = None,
+    settings: Settings | None = None,
 ) -> tuple:
     """用真实编排 executor 处理已领取任务并提交事务。"""
-    settings = Settings(allow_final_submit=True)
+    settings = settings or Settings(allow_final_submit=True)
     queue_repo = SqlAlchemyQueueRepository(session)
     task_repo = SqlAlchemyTaskRepository(session)
     ledger_repo = SqlAlchemyLedgerRepository(session)
@@ -173,6 +174,35 @@ class TestPhase10FullScenario:
             "ACCOUNT_ALLOCATION",
             "DELIVERY",
         }
+        assert bundle.feishu.written_links == {}
+
+    def test_tomato_dry_run_default_settings_completes_without_submit(
+        self, db_session: Session
+    ) -> None:
+        task = _task("task-phase10-dryrun-001", "验收短剧D", "TOMATO")
+        bundle = _bundle(task)
+        claimed = _enqueue(db_session, bundle)
+        assert claimed is not None
+
+        result, queue_repo, task_repo, ledger_repo, event_repo = _process(
+            db_session,
+            bundle,
+            claimed,
+            settings=Settings(),
+        )
+
+        assert result.final_queue_state == QueueState.COMPLETED
+        assert queue_repo.get(claimed.id).state == QueueState.COMPLETED
+        assert task_repo.get(task.id).status == TaskStatus.COMPLETED
+        assert len(ledger_repo.list_by_task(task.id)) == 1
+        delivery_events = event_repo.list_events(
+            task_id=task.id,
+        )
+        delivery = next(
+            event for event in delivery_events if event.event_type == "DELIVERY"
+        )
+        assert delivery.level == EventLevel.WARNING
+        assert "安全开关拦截" in delivery.message
         assert bundle.feishu.written_links == {}
 
     def test_all_accounts_occupied_returns_manual_review(

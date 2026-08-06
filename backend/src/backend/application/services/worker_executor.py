@@ -19,6 +19,7 @@ from backend.application.services.plan_spec_service import PlanSpecBuilder
 from backend.application.services.plan_validation_service import PlanValidationService
 from backend.application.services.standard_delivery_service import (
     COMPLETED as DELIVERY_COMPLETED,
+    DRY_RUN as DELIVERY_DRY_RUN,
     StandardDeliveryService,
 )
 from backend.application.services.tomato_extraction_service import extract_iaa, scan_iap
@@ -154,15 +155,18 @@ def build_worker_executor(
             task.id,
             item.claimed_by or "worker-unknown",
         )
-        if delivery_outcome.status != DELIVERY_COMPLETED:
+        if delivery_outcome.status not in (
+            DELIVERY_COMPLETED,
+            DELIVERY_DRY_RUN,
+        ):
             return _outcome(
                 STATUS_MANUAL_REVIEW,
                 [
                     *link_events,
                     _account_event(task, accounts),
                     _delivery_error(task, delivery_outcome),
-            ],
-        )
+                ],
+            )
 
         ledger = (
             scratch_ledger_repo.get(delivery_outcome.ledger_id)
@@ -348,11 +352,16 @@ def _account_error(task: DramaTask, links: dict[str, str]) -> ExecutionEvent:
 
 
 def _delivery_event(task: DramaTask, outcome) -> ExecutionEvent:
+    dry_run = getattr(outcome, "status", "") == DELIVERY_DRY_RUN
     return ExecutionEvent(
         task_id=task.id,
         event_type="DELIVERY",
-        message=f"标准投放完成: {outcome.external_task_id}",
-        level=EventLevel.INFO,
+        message=(
+            f"标准投放未提交（安全开关拦截），本地流程完成: {outcome.external_task_id}"
+            if dry_run
+            else f"标准投放完成: {outcome.external_task_id}"
+        ),
+        level=EventLevel.WARNING if dry_run else EventLevel.INFO,
         context_json={"status": outcome.status, "ledger_id": outcome.ledger_id},
     )
 
