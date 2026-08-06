@@ -1,18 +1,34 @@
 """Control Server 启动入口。
 
-用法: python -m backend.bootstrap.control_server [--host HOST] [--port PORT] [--reload] [--skip-seed]
+用法: python -m backend.bootstrap.control_server [--host HOST] [--port PORT] [--reload] [--skip-seed] [--disable-scheduler]
 """
 from __future__ import annotations
 
 import argparse
+import logging
+import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
 
+from backend.application.services.delivery_scheduler import DeliveryScheduler
 from backend.application.services.rule_seed_service import seed_rules_from_defaults
+from backend.bootstrap.adapters import build_adapters
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
+from backend.infrastructure.database.repositories.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.session import SessionLocal
+
+logger = logging.getLogger(__name__)
+
+_scheduler_started = False
 
 
 def _seed_defaults(defaults_path: Path | None) -> None:
@@ -28,6 +44,53 @@ def _seed_defaults(defaults_path: Path | None) -> None:
         )
     finally:
         session.close()
+
+
+def _start_scheduler(disable: bool) -> None:
+    """启动剧目扫描调度 daemon 线程；模块级守卫避免 reload 重复启动。"""
+    global _scheduler_started
+    if disable or _scheduler_started:
+        return
+
+    bundle = build_adapters(Settings(), use_real=False)
+    thread = threading.Thread(
+        target=_scheduler_loop,
+        args=(bundle.feishu,),
+        name="delivery-scheduler",
+        daemon=True,
+    )
+    thread.start()
+    _scheduler_started = True
+    print(
+        "剧目扫描调度器已启动: "
+        "interval=3600s, mode=mock"
+    )
+
+
+def _scheduler_loop(feishu, interval_seconds: int = 3600) -> None:
+    """调度线程主体：每轮使用独立 Session 扫描并提交。"""
+    while True:
+        session = SessionLocal()
+        try:
+            scheduler = DeliveryScheduler(
+                feishu=feishu,
+                task_repo=SqlAlchemyTaskRepository(session),
+                queue_repo=SqlAlchemyQueueRepository(session),
+            )
+            result = scheduler.tick(datetime.now(timezone.utc))
+            session.commit()
+            print(
+                f"剧目扫描完成: day={result.day} "
+                f"created={result.created_tasks} "
+                f"updated={result.updated_tasks} "
+                f"enqueued={result.enqueued} skipped={result.skipped}"
+            )
+        except Exception:
+            session.rollback()
+            logger.exception("剧目扫描失败，等待下一轮")
+        finally:
+            session.close()
+        time.sleep(interval_seconds)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +121,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="默认规则 JSON 路径（默认 configs/defaults/rules.json）",
     )
+    parser.add_argument(
+        "--disable-scheduler",
+        action="store_true",
+        default=False,
+        help="禁用剧目扫描调度线程",
+    )
     args = parser.parse_args(argv)
 
     # 启动前自动执行数据库迁移
@@ -66,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.skip_seed:
         _seed_defaults(args.defaults_path)
+
+    _start_scheduler(args.disable_scheduler)
 
     uvicorn.run(
         "backend.interfaces.api.main:app",
