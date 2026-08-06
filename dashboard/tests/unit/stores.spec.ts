@@ -193,7 +193,7 @@ describe("usePlanStore", () => {
         validationStatus: "—",
         submitStatus: "—",
         externalTaskId: "—",
-        createdAt: "—"
+        createdAt: "2026-08-06T10:00:00"
       }
     ])
   })

@@ -72,7 +72,7 @@ function toPlanView(ledger: LedgerView): PlanView {
     validationStatus: displayText(ledger.validation_status),
     submitStatus: displayText(ledger.submit_status),
     externalTaskId: displayText(ledger.external_task_id),
-    createdAt: displayText(ledger.created_at)
+    createdAt: displayText(ledger.created_at ?? ledger.completed_at)
   }
 }
 
