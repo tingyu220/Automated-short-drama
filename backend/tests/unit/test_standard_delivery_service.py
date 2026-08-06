@@ -103,6 +103,13 @@ class FakeLedgerRepository:
         return list(self._ledgers.values())
 
 
+class FailingLedgerRepository(FakeLedgerRepository):
+    """add 阶段抛异常的台账 fake。"""
+
+    def add(self, ledger: TaskLedger) -> TaskLedger:
+        raise ExternalAdapterError("台账写入失败")
+
+
 class FakeTaskRepository:
     """内存态 TaskRepository fake。"""
 
@@ -206,6 +213,10 @@ class TestStandardDeliveryService:
         assert outcome.status == DRY_RUN
         assert outcome.external_task_id is None
         assert outcome.ledger_id is None
+        assert [issue.code for issue in outcome.issues] == [
+            "FINAL_SUBMIT_DISABLED"
+        ]
+        assert outcome.issues[0].field == "submit_guard"
         assert delivery.submit_calls == 0
         assert feishu.read_status("task-1") == "PENDING"
         assert ledger_repo.list_all() == []
@@ -278,3 +289,22 @@ class TestStandardDeliveryService:
         assert outcome.ledger_id is None
         assert feishu.read_status("task-1") == "PENDING"
         assert ledger_repo.list_all() == []
+
+    def test_ledger_write_failure_returns_manual_review_without_m(self) -> None:
+        feishu = MockFeishuAdapter()
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=RecordingDeliveryAdapter(),
+            feishu=feishu,
+            ledger_repo=FailingLedgerRepository(),
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+
+        outcome = service.execute(
+            _spec(), [], "task-1", True, True, "worker-1"
+        )
+
+        assert outcome.status == MANUAL_REVIEW
+        assert outcome.external_task_id
+        assert outcome.ledger_id is None
+        assert feishu.read_status("task-1") == "PENDING"

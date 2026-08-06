@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,9 +27,10 @@ DRY_RUN = "DRY_RUN"
 COMPLETED = "COMPLETED"
 MANUAL_REVIEW = "MANUAL_REVIEW"
 
-# 轮询最长 24 次；测试环境间隔为 0，真实环境由调度层决定。
+# 轮询最长 24 次；间隔由构造参数控制，默认 0 保持测试兼容。
 _MAX_POLLS = 24
-_POLL_INTERVAL_SECONDS = 0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,6 +55,8 @@ class StandardDeliveryService:
         feishu: FeishuAdapter,
         ledger_repo: LedgerRepository,
         task_repo: TaskRepository,
+        *,
+        poll_interval_seconds: int = 0,
     ) -> None:
         self._validation = validation
         self._delivery_flow = DeliveryFlowService(delivery, ocean)
@@ -60,6 +64,7 @@ class StandardDeliveryService:
         self._feishu = feishu
         self._ledger_repo = ledger_repo
         self._task_repo = task_repo
+        self._poll_interval_seconds = poll_interval_seconds
 
     def execute(
         self,
@@ -82,7 +87,16 @@ class StandardDeliveryService:
             allow_final_submit, use_real_adapters
         )
         if not decision.allowed:
-            return DeliveryOutcome(status=DRY_RUN)
+            return DeliveryOutcome(
+                status=DRY_RUN,
+                issues=[
+                    ValidationIssue(
+                        code=decision.reason or "SUBMIT_BLOCKED",
+                        message=f"提交被安全开关拦截: {decision.reason}",
+                        field="submit_guard",
+                    )
+                ],
+            )
 
         external_task_id: str | None = None
         try:
@@ -105,7 +119,7 @@ class StandardDeliveryService:
             status = self._delivery_flow.poll_until_completed(
                 external_task_id,
                 max_polls=_MAX_POLLS,
-                interval_seconds=_POLL_INTERVAL_SECONDS,
+                interval_seconds=self._poll_interval_seconds,
             )
             if status != COMPLETED:
                 return DeliveryOutcome(
@@ -116,6 +130,11 @@ class StandardDeliveryService:
                 plan_spec, task_id, external_task_id, product_id
             )
         except Exception:
+            logger.exception(
+                "标准投放执行失败: task_id=%s external_task_id=%s",
+                task_id,
+                external_task_id,
+            )
             return DeliveryOutcome(
                 status=MANUAL_REVIEW,
                 external_task_id=external_task_id,
@@ -128,9 +147,7 @@ class StandardDeliveryService:
         external_task_id: str,
         product_id: str,
     ) -> DeliveryOutcome:
-        """平台确认完成后写 M=1 与成功台账。"""
-        self._feishu.write_completion(task_id)
-
+        """平台确认完成后先落成功台账，再写 M=1，避免台账失败留下 M。"""
         task = self._task_repo.get(task_id)
         if task is None:
             raise NotFoundError(f"DramaTask {task_id} not found")
@@ -149,6 +166,7 @@ class StandardDeliveryService:
             completed_at=now,
         )
         saved = self._ledger_repo.add(ledger)
+        self._feishu.write_completion(task_id)
         return DeliveryOutcome(
             status=COMPLETED,
             external_task_id=external_task_id,
