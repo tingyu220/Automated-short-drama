@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.application.services.account_allocation_service import (
     AccountAllocationService,
@@ -19,8 +20,8 @@ router = APIRouter(tags=["accounts"])
 class _AllocatePreviewRequest(BaseModel):
     """分配预览请求体。"""
 
-    drama_name: str
-    block_type: str
+    drama_name: str = Field(min_length=1)
+    block_type: Literal["IAA", "IAP"]
     allocated_cids: list[str] = []
 
 

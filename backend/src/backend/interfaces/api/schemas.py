@@ -131,7 +131,7 @@ class ExecutionArtifactView(BaseModel):
 
 
 class AccountOverviewView(BaseModel):
-    """账户概览视图；V1 返回 not_configured 占位。"""
+    """账户概览视图；V1 使用内存 Mock 账户表。"""
 
     sync_status: str
     last_synced_at: datetime | None

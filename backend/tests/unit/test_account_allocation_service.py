@@ -117,6 +117,13 @@ class TestFindIaaBlock:
         assert allocation is not None
         assert [row.row_number for row in allocation.rows] == list(range(11, 21))
 
+    def test_wrong_group_order_is_not_an_iaa_block(self):
+        rows = _iaa_block(1, "ok")
+        rows[2], rows[3] = rows[3], rows[2]  # B1 与 B4 交换错序
+        allocation = AccountAllocationService("测试剧").find_iaa_block(rows, set())
+
+        assert allocation is None
+
     def test_test_account_skips_already_marked_b4(self):
         rows = _iaa_block(1, "iaa", marked_b4=(4,))
         allocation = AccountAllocationService("测试剧").find_iaa_block(rows, set())
@@ -168,6 +175,14 @@ class TestFindIapBlock:
 
     def test_dual_template_with_partial_group_returns_none(self):
         rows = _iap_block(1, "iap", groups=("B1-9.9",))
+        allocation = AccountAllocationService("测试剧").find_iap_block(
+            rows, set(), {"9.9", "2.9"}
+        )
+
+        assert allocation is None
+
+    def test_wrong_group_order_is_not_an_iap_block(self):
+        rows = _iap_block(1, "a", groups=("B2-2.9", "B1-9.9"))
         allocation = AccountAllocationService("测试剧").find_iap_block(
             rows, set(), {"9.9", "2.9"}
         )
