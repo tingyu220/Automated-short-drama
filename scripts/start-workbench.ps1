@@ -11,6 +11,18 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 $jobs = @()
 
+
+# 0. 执行数据库迁移
+Write-Host "执行数据库迁移 ..."
+Set-Location "$ProjectRoot\backend"
+python -m backend.infrastructure.database.migrations
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "数据库迁移失败，退出。"
+    exit 1
+}
+Write-Host "数据库迁移完成。"
+
+
 # 1. 构建前端
 Write-Host "构建前端 (dashboard) ..."
 Set-Location "$ProjectRoot\dashboard"

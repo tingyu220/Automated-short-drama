@@ -8,6 +8,8 @@ import argparse
 
 import uvicorn
 
+from backend.infrastructure.database.migrations import run_migrations
+
 
 def main(argv: list[str] | None = None) -> int:
     """解析命令行参数并启动 uvicorn。
@@ -19,7 +21,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1", help="绑定地址（默认 127.0.0.1）")
     parser.add_argument("--port", type=int, default=8765, help="绑定端口（默认 8765）")
     parser.add_argument("--reload", action="store_true", default=False, help="开启热重载")
+    parser.add_argument(
+        "--skip-migrations",
+        action="store_true",
+        default=False,
+        help="跳过数据库迁移",
+    )
     args = parser.parse_args(argv)
+
+    # 启动前自动执行数据库迁移
+    if not args.skip_migrations:
+        run_migrations()
 
     uvicorn.run(
         "backend.interfaces.api.main:app",

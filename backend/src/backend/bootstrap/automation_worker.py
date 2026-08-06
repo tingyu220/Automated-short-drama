@@ -17,6 +17,7 @@ from backend.application.services.worker_heartbeat import (
     heartbeat,
     release_lease,
 )
+from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.session import SessionLocal
 from backend.infrastructure.database.models.worker import (  # noqa: F401
@@ -61,6 +62,12 @@ def main(argv: list[str] | None = None) -> int:
         help="租约时长（秒，默认 60）",
     )
     parser.add_argument(
+        "--skip-migrations",
+        action="store_true",
+        default=False,
+        help="跳过数据库迁移",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         default=False,
@@ -73,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
     pid = _get_pid()
     interval = args.interval
     lease_seconds = args.lease_seconds
+
+    # 启动前自动执行数据库迁移
+    if not args.skip_migrations:
+        run_migrations()
 
     session = SessionLocal()
     try:
@@ -106,8 +117,6 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print(f"\nWorker {worker_id}: 收到中断信号（启动阶段），释放租约...")
     except Exception:
-        release_lease(session, worker_id)
-        session.close()
         raise
     finally:
         release_lease(session, worker_id)
