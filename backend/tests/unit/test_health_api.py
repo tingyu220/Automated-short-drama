@@ -51,3 +51,20 @@ class TestHealthz:
         client = TestClient(app)
         response = client.get("/healthz")
         assert response.json()["allow_final_submit"] is True
+
+    def test_database_unavailable_returns_degraded(self, monkeypatch):
+        """数据库不可用时返回 200、status=degraded、database=error。"""
+        def _raise(*args, **kwargs):
+            raise RuntimeError("simulated db failure")
+
+        monkeypatch.setattr(
+            "backend.interfaces.api.routes.health.SessionLocal",
+            _raise,
+        )
+        app = create_app()
+        client = TestClient(app)
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "degraded"
+        assert data["database"] == "error"
