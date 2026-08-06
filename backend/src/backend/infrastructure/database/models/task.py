@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.infrastructure.database.base import Base
@@ -21,7 +21,10 @@ class DramaTaskRecord(Base):
     available_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="WAITING_TIME"
+        String(32),
+        nullable=False,
+        default="WAITING_TIME",
+        server_default=text("'WAITING_TIME'"),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
@@ -41,7 +44,10 @@ class QueueItemRecord(Base):
         String(36), ForeignKey("drama_task.id"), nullable=False
     )
     state: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="WAITING_TIME"
+        String(32),
+        nullable=False,
+        default="WAITING_TIME",
+        server_default=text("'WAITING_TIME'"),
     )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     available_at: Mapped[datetime] = mapped_column(
@@ -69,7 +75,10 @@ class WorkflowRunRecord(Base):
         String(36), ForeignKey("drama_task.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="PENDING"
+        String(32),
+        nullable=False,
+        default="PENDING",
+        server_default=text("'PENDING'"),
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -86,10 +95,14 @@ class StepRunRecord(Base):
     )
     step_name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="PENDING"
+        String(32),
+        nullable=False,
+        default="PENDING",
+        server_default=text("'PENDING'"),
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 存储 JSON 字符串；domain 层使用 dict，ORM 层负责序列化/反序列化
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -110,7 +123,9 @@ class TaskLedgerRecord(Base):
         String(128), nullable=False, default=""
     )
     task_name: Mapped[str] = mapped_column(String(256), nullable=False, default="")
-    final_status: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    final_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="", server_default=text("''")
+    )
     rule_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     config_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
