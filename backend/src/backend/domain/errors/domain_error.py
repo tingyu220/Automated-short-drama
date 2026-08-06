@@ -48,8 +48,14 @@ class ConflictError(DomainError):
 class ExternalAdapterError(DomainError):
     """外部适配器错误。"""
 
-    def __init__(self, message: str = "", **kwargs: object) -> None:
-        super().__init__(message, code="EXTERNAL_ADAPTER_ERROR", **kwargs)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        code: str = "EXTERNAL_ADAPTER_ERROR",
+        **kwargs: object,
+    ) -> None:
+        super().__init__(message, code=code, **kwargs)  # type: ignore[arg-type]
 
 
 class ValidationError(DomainError):
