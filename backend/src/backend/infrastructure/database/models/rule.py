@@ -98,6 +98,9 @@ class MaterialRuleRangeRecord(Base):
     __tablename__ = "material_rule_range"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    key: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=text("''")
+    )
     min_material_count: Mapped[int] = mapped_column(Integer, nullable=False)
     max_material_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     strategy: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -116,6 +119,9 @@ class TemplatePriceRuleRecord(Base):
     __tablename__ = "template_price_rule"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    key: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=text("''")
+    )
     target_price: Mapped[float] = mapped_column(Float, nullable=False)
     min_price: Mapped[float] = mapped_column(Float, nullable=False)
     max_price: Mapped[float] = mapped_column(Float, nullable=False)

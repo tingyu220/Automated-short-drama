@@ -1,7 +1,7 @@
 """Automation Worker 启动入口.
 
 用法:
-    python -m backend.bootstrap.automation_worker [--worker-id ID] [--interval N] [--lease-seconds N] [--once]
+    python -m backend.bootstrap.automation_worker [--worker-id ID] [--interval N] [--lease-seconds N] [--once] [--skip-seed]
 """
 from __future__ import annotations
 
@@ -11,12 +11,17 @@ import signal
 import socket
 import sys
 import time
+from pathlib import Path
 
+from sqlalchemy.orm import Session
+
+from backend.application.services.rule_seed_service import seed_rules_from_defaults
 from backend.application.services.worker_heartbeat import (
     acquire_lease,
     heartbeat,
     release_lease,
 )
+from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.migrations import run_migrations
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.session import SessionLocal
@@ -33,6 +38,17 @@ def _get_host() -> str:
 def _get_pid() -> int:
     """获取当前进程 PID."""
     return os.getpid()
+
+
+def _seed_defaults(session: Session, defaults_path: Path | None) -> None:
+    """导入默认规则配置；重复导入幂等跳过。"""
+    path = defaults_path or (Settings().config_defaults_dir / "rules.json")
+    result = seed_rules_from_defaults(session, path)
+    session.commit()
+    print(
+        f"Worker: 默认规则初始化完成 "
+        f"(created={result.created_rules}, skipped={result.skipped_rules})"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,6 +89,18 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="单次心跳后退出",
     )
+    parser.add_argument(
+        "--skip-seed",
+        action="store_true",
+        default=False,
+        help="跳过默认规则初始化导入",
+    )
+    parser.add_argument(
+        "--defaults-path",
+        type=Path,
+        default=None,
+        help="默认规则 JSON 路径（默认 configs/defaults/rules.json）",
+    )
     args = parser.parse_args(argv)
 
     worker_id = args.worker_id
@@ -87,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
 
     session = SessionLocal()
     try:
+        if not args.skip_seed:
+            _seed_defaults(session, args.defaults_path)
+
         if not acquire_lease(session, worker_id, host, pid, lease_seconds):
             print(f"Worker {worker_id}: 租约已被其他 Worker 占用，退出.")
             return 1

@@ -1,0 +1,44 @@
+{
+  "rule_sets": [
+    {
+      "key": "iaa_episode_threshold",
+      "name": "IAA选集阈值",
+      "category": "链接规则",
+      "description": "总集数超过阈值选第2集",
+      "version": "1",
+      "parameters": [
+        {"name": "episode_threshold", "value": 50, "data_type": "int", "description": "超过该集数选第2集"}
+      ]
+    },
+    {
+      "key": "iap_price_2_9",
+      "name": "IAP 2.9",
+      "category": "价格模板",
+      "version": "1",
+      "parameters": [
+        {"name": "target_price", "value": 2.9, "data_type": "float", "description": "目标价格"},
+        {"name": "min_price", "value": 2.6, "data_type": "float", "description": "最低价格"},
+        {"name": "max_price", "value": 5.0, "data_type": "float", "description": "最高价格"}
+      ]
+    },
+    {
+      "key": "iap_price_9_9",
+      "name": "IAP 9.9",
+      "category": "价格模板",
+      "version": "1",
+      "parameters": [
+        {"name": "target_price", "value": 9.9, "data_type": "float", "description": "目标价格"},
+        {"name": "min_price", "value": 8.8, "data_type": "float", "description": "最低价格"},
+        {"name": "max_price", "value": 13.8, "data_type": "float", "description": "最高价格"}
+      ]
+    }
+  ],
+  "template_price_rules": [
+    {"key": "iap_2_9", "target_price": 2.9, "min_price": 2.6, "max_price": 5.0, "same_distance_strategy": "HIGHER_PRICE_FIRST"},
+    {"key": "iap_9_9", "target_price": 9.9, "min_price": 8.8, "max_price": 13.8, "same_distance_strategy": "HIGHER_PRICE_FIRST"}
+  ],
+  "material_rule_ranges": [
+    {"key": "n_leq_30", "min_material_count": 0, "max_material_count": 30, "strategy": "BASE_1_COPY_2", "base_group_count": 1, "copy_count": 2, "target_project_count": 3},
+    {"key": "n_30_60", "min_material_count": 31, "max_material_count": 60, "strategy": "BASE_2_COPY_2", "base_group_count": 2, "copy_count": 2, "target_project_count": 3}
+  ]
+}
