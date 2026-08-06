@@ -8,8 +8,8 @@ from backend.domain.errors.domain_error import ConflictError
 _TRANSITIONS: dict[str, set[str]] = {
     "WAITING_TIME": {"QUEUED"},
     "QUEUED": {"CLAIMED"},
-    "CLAIMED": {"RUNNING"},
-    "RUNNING": {"COMPLETED", "RETRY_WAIT", "PAUSED", "MANUAL_REVIEW", "FAILED", "CANCELLED"},
+    "CLAIMED": {"RUNNING", "QUEUED", "MANUAL_REVIEW"},
+    "RUNNING": {"COMPLETED", "RETRY_WAIT", "PAUSED", "MANUAL_REVIEW", "FAILED", "CANCELLED", "QUEUED"},
     "RETRY_WAIT": {"QUEUED", "MANUAL_REVIEW"},
     "PAUSED": {"QUEUED", "RUNNING", "CANCELLED"},
     "MANUAL_REVIEW": {"QUEUED", "CANCELLED"},

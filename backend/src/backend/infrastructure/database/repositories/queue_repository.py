@@ -110,6 +110,17 @@ class SqlAlchemyQueueRepository:
         ).scalar_one()
         return self._to_domain(record)
 
+    def find_expired(self, now: datetime) -> list[QueueItem]:
+        """查找已过期的 CLAIMED / RUNNING 项（lease_until < now）."""
+        stmt = select(QueueItemRecord).where(
+            QueueItemRecord.state.in_(
+                [QueueState.CLAIMED, QueueState.RUNNING]
+            ),
+            QueueItemRecord.lease_until < now,
+        )
+        records = self._session.execute(stmt).scalars().all()
+        return [self._to_domain(r) for r in records]
+
     # ---- 内部辅助 ----
 
     @staticmethod
