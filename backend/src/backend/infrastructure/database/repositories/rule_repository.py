@@ -57,6 +57,20 @@ class SqlAlchemyRuleRepository:
         )
         return self._to_rule_set(record) if record else None
 
+    def list_rule_sets(self) -> list[RuleSet]:
+        """按更新时间倒序列出全部规则集。"""
+        records = (
+            self._session.execute(
+                select(RuleSetRecord).order_by(
+                    RuleSetRecord.updated_at.desc(),
+                    RuleSetRecord.id.desc(),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [self._to_rule_set(record) for record in records]
+
     def update_rule_set(self, rule_set: RuleSet) -> RuleSet:
         record = self._session.get(RuleSetRecord, rule_set.id)
         if record is None:

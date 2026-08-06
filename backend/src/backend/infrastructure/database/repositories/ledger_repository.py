@@ -69,6 +69,15 @@ class SqlAlchemyLedgerRepository:
         records = self._session.execute(stmt).scalars().all()
         return [self._to_domain(r) for r in records]
 
+    def list_all(self) -> list[TaskLedger]:
+        """按完成时间倒序列出全部台账。"""
+        stmt = select(TaskLedgerRecord).order_by(
+            TaskLedgerRecord.completed_at.desc(),
+            TaskLedgerRecord.id.desc(),
+        )
+        records = self._session.execute(stmt).scalars().all()
+        return [self._to_domain(r) for r in records]
+
     @staticmethod
     def _to_domain(record: TaskLedgerRecord) -> TaskLedger:
         """ORM → 领域模型."""
