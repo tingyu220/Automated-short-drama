@@ -1,5 +1,6 @@
 # 本地运行数据（SQLite、会话、产物、备份）
 data/
+.codegraph/
 
 # Python
 .venv/
