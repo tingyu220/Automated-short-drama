@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from backend.application.services.production_validation_service import (
     ERROR,
@@ -69,7 +70,24 @@ def test_default_report_dir_points_to_project_root(monkeypatch, tmp_path) -> Non
     ).resolve()
 
 
-def test_failed_ladder_writes_fail_report_and_next_step(
+def test_default_report_dir_full_main_writes_report(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+
+    code = cli.main(["--ladder", "single"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    report_path = tmp_path / "data" / "production-validation" / "single-test-latest.md"
+    assert payload["report_path"] == str(report_path.resolve())
+    assert report_path.is_file()
+    assert "**总体**: PASS" in report_path.read_text(encoding="utf-8")
+
+
+def test_failed_ladder_writes_fail_report_with_next_step(
     monkeypatch,
     tmp_path,
     capsys,
@@ -117,13 +135,13 @@ def test_report_write_failure_emits_report_error(
         )]),
     )
 
-    def raise_render_error(self, report):
-        raise RuntimeError("disk boom")
+    def raise_write_error(self, *args, **kwargs):
+        raise OSError("disk boom")
 
     monkeypatch.setattr(
-        cli.ProductionReportService,
-        "render_markdown",
-        raise_render_error,
+        Path,
+        "write_text",
+        raise_write_error,
     )
 
     code = cli.main(

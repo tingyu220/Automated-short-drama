@@ -1,4 +1,4 @@
-"""生产验证 CLI：运行 Mock/真实模式阶梯验证并输出 JSON。"""
+"""生产验证 CLI：运行 Mock/真实模式阶梯验证，输出 JSON 并写入 Markdown 报告。"""
 from __future__ import annotations
 
 import argparse
@@ -36,6 +36,7 @@ from backend.domain.tasks.drama_task import DramaTask
 from backend.infrastructure.config.settings import Settings
 
 ALLOW_FINAL_SUBMIT_ENV = "ALLOW_FINAL_SUBMIT"
+# backend/src/backend/interfaces/cli/ -> parents[4]=backend, .parent=项目根
 PROJECT_ROOT = Path(__file__).resolve().parents[4].parent
 DEFAULT_REPORT_DIR = "data/production-validation"
 LADDER_SIZES = {"single": 1, "three": 3, "five": 5, "ten": 10}
@@ -168,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
             report_service.render_markdown(report),
             encoding="utf-8",
         )
-    except Exception as exc:
+    except (OSError, TypeError, ValueError) as exc:
+        logger.exception("生产验证报告写入失败: path=%s", report_path)
         _emit_report_error(exc)
         return 1
 

@@ -7,6 +7,8 @@
     全部通过退出 0，否则退出 1。
 #>
 $ErrorActionPreference = "Stop"
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BackendDir = Join-Path $ProjectRoot "backend"
@@ -22,7 +24,7 @@ Push-Location $BackendDir
 try {
     foreach ($Ladder in $Ladders) {
         Write-Host "==> 运行 Mock $Ladder"
-        $Output = python -m backend.interfaces.cli.production_validation --ladder $Ladder --plan-type test 2>$null
+        $Output = python -m backend.interfaces.cli.production_validation --ladder $Ladder --plan-type test
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[FAIL] $Ladder 退出码 $LASTEXITCODE"
             $AllPassed = $false

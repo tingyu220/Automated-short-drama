@@ -32,7 +32,7 @@ stdout JSON 中的 `report_path` 指向该文件的绝对路径。
 - 环境变量 `ALLOW_FINAL_SUBMIT=true`；
 - CLI 追加 `--real`；
 - 真实 Adapter 已配置（Settings 指向真实投放/巨量/飞书环境）；
-- 真实模式需 Playwright page 后补真实链路测试（Task 9.1 遗留），当前不执行真实链路。
+- CLI 已支持 `--real` 与报告落盘，但完整真实链路需 Task 9.1 Playwright page 补齐后另行验收。
 
 ```powershell
 $env:ALLOW_FINAL_SUBMIT = "true"
