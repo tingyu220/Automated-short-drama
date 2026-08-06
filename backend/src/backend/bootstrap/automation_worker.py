@@ -44,6 +44,9 @@ from backend.infrastructure.database.repositories.queue_repository import (
 from backend.infrastructure.database.repositories.task_repository import (
     SqlAlchemyTaskRepository,
 )
+from backend.infrastructure.database.repositories.worker_lease_repository import (
+    SqlAlchemyWorkerLeaseRepository,
+)
 from backend.infrastructure.database.session import SessionLocal
 from backend.infrastructure.database.models.worker import (  # noqa: F401
     WorkerLeaseRecord,
@@ -81,7 +84,8 @@ def _run_cycle(
     use_mock_executor: bool = False,
 ) -> str:
     """执行一轮 Worker cycle：心跳 + 队列推进 + 认领任务执行。"""
-    lease = heartbeat(session, worker_id, host, pid, lease_seconds)
+    lease_repo = SqlAlchemyWorkerLeaseRepository(session)
+    lease = heartbeat(lease_repo, worker_id, host, pid, lease_seconds)
     heartbeat_text = f"心跳 (lease_until={lease.lease_until.isoformat()})"
     # 心跳先独立提交，避免执行段异常回滚时把租约一并回滚
     session.commit()
@@ -210,7 +214,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.skip_seed:
             _seed_defaults(session, args.defaults_path)
 
-        if not acquire_lease(session, worker_id, host, pid, lease_seconds):
+        lease_repo = SqlAlchemyWorkerLeaseRepository(session)
+        if not acquire_lease(lease_repo, worker_id, host, pid, lease_seconds):
             print(f"Worker {worker_id}: 租约已被其他 Worker 占用，退出.")
             return 1
 
@@ -256,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         raise
     finally:
-        release_lease(session, worker_id)
+        release_lease(lease_repo, worker_id)
         session.close()
 
     return 0

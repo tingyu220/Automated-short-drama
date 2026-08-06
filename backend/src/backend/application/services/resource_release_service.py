@@ -17,6 +17,9 @@ from backend.domain.ports.repositories import (
     QueueRepository,
     TaskRepository,
 )
+from backend.infrastructure.database.repositories.worker_lease_repository import (
+    SqlAlchemyWorkerLeaseRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,11 @@ class ResourceReleaseService:
         )
 
         if release_lease is None:
-            release_lease = worker_heartbeat.release_lease
+            release_lease = (
+                lambda session, worker_id: worker_heartbeat.release_lease(
+                    SqlAlchemyWorkerLeaseRepository(session), worker_id
+                )
+            )
         if not release_lease(session, worker_id):
             logger.warning(
                 "Worker 租约释放未命中: worker_id=%s", worker_id

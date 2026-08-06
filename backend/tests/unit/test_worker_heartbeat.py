@@ -1,162 +1,217 @@
-"""WorkerHeartbeat 服务单元测试，使用 mock session."""
+"""WorkerHeartbeat 服务单元测试，使用 fake 租约仓储。"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
 
 from backend.application.services.worker_heartbeat import (
     acquire_lease,
     heartbeat,
-    release_lease,
     is_lease_active,
     list_expired_leases,
+    release_lease,
     _now,
 )
-from backend.domain.worker.worker_lease import STATUS_RUNNING, STATUS_STOPPED
-from backend.infrastructure.database.models.worker import WorkerLeaseRecord
+from backend.domain.worker.worker_lease import (
+    STATUS_RUNNING,
+    STATUS_STOPPED,
+    WorkerLease,
+)
 
-FIXED_NOW = datetime(2026, 8, 6, 12, 0, 0)
+FIXED_NOW = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
 
 
-def _make_record(
+def _lease(
     worker_id: str = "w1",
-    host: str = "localhost",
-    pid: int = 1234,
     status: str = STATUS_RUNNING,
-    heartbeat_at: datetime | None = None,
     lease_until: datetime | None = None,
-) -> WorkerLeaseRecord:
-    now = heartbeat_at or FIXED_NOW
-    return WorkerLeaseRecord(
+) -> WorkerLease:
+    return WorkerLease(
         worker_id=worker_id,
-        host=host,
-        pid=pid,
+        host="localhost",
+        pid=1234,
         status=status,
-        heartbeat_at=now,
-        lease_until=lease_until or (now + timedelta(seconds=60)),
+        heartbeat_at=FIXED_NOW,
+        lease_until=lease_until or (FIXED_NOW + timedelta(seconds=60)),
     )
 
 
+class FakeWorkerLeaseRepository:
+    """内存 WorkerLeaseRepository 假实现。"""
+
+    def __init__(
+        self,
+        records: dict[str, WorkerLease] | None = None,
+    ) -> None:
+        self._records = records or {}
+
+    def acquire(
+        self,
+        worker_id: str,
+        host: str,
+        pid: int,
+        lease_until: datetime,
+        heartbeat_at: datetime,
+    ) -> bool:
+        if any(
+            record.worker_id != worker_id
+            and record.status == STATUS_RUNNING
+            and record.lease_until > heartbeat_at
+            for record in self._records.values()
+        ):
+            return False
+        current = self._records.get(worker_id)
+        self._records[worker_id] = WorkerLease(
+            worker_id=worker_id,
+            host=host,
+            pid=pid,
+            status=STATUS_RUNNING,
+            heartbeat_at=heartbeat_at,
+            lease_until=lease_until,
+        )
+        return True
+
+    def heartbeat(
+        self,
+        worker_id: str,
+        host: str,
+        pid: int,
+        lease_until: datetime,
+        heartbeat_at: datetime,
+    ) -> WorkerLease:
+        record = WorkerLease(
+            worker_id=worker_id,
+            host=host,
+            pid=pid,
+            status=STATUS_RUNNING,
+            heartbeat_at=heartbeat_at,
+            lease_until=lease_until,
+        )
+        self._records[worker_id] = record
+        return record
+
+    def release(self, worker_id: str) -> bool:
+        record = self._records.get(worker_id)
+        if record is None:
+            return False
+        record.status = STATUS_STOPPED
+        return True
+
+    def is_active(self, worker_id: str, now: datetime) -> bool:
+        record = self._records.get(worker_id)
+        return (
+            record is not None
+            and record.status == STATUS_RUNNING
+            and record.lease_until > now
+        )
+
+    def list_expired(self, now: datetime) -> list[WorkerLease]:
+        return [
+            record
+            for record in self._records.values()
+            if record.lease_until < now
+        ]
+
+
 class TestAcquireLease:
-    """acquire_lease 测试."""
+    """acquire_lease 测试。"""
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_acquire_when_no_existing_lease(self, mock_now):
-        """无已有租约时应成功获取."""
-        session = MagicMock()
-        session.execute.return_value.rowcount = 0
-        q = session.query.return_value
-        q.filter.return_value.first.return_value = None
-        result = acquire_lease(session, "w1", "host1", 100, 60)
+    def test_acquire_when_no_existing_lease(self):
+        repo = FakeWorkerLeaseRepository()
+        result = acquire_lease(
+            repo, "w1", "host1", 100, 60, now=FIXED_NOW
+        )
         assert result is True
+        assert repo._records["w1"].status == STATUS_RUNNING
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_acquire_rejected_when_other_active(self, mock_now):
-        """其他 Worker 持有有效租约时被拒."""
-        session = MagicMock()
-        session.execute.return_value.rowcount = 0
-        other = _make_record("other-worker")
-        session.query.return_value.filter.return_value.first.return_value = other
-        result = acquire_lease(session, "w1", "host1", 100, 60)
+    def test_acquire_rejected_when_other_active(self):
+        repo = FakeWorkerLeaseRepository(
+            {"w1": _lease("w1", lease_until=FIXED_NOW + timedelta(seconds=10))}
+        )
+        result = acquire_lease(
+            repo, "w2", "host2", 200, 60, now=FIXED_NOW
+        )
         assert result is False
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_acquire_overwrite_own_lease(self, mock_now):
-        """自己的旧记录允许覆盖."""
-        session = MagicMock()
-        session.execute.return_value.rowcount = 0
-        old_self = _make_record("w1")
-        q1 = MagicMock()
-        q2 = MagicMock()
-        session.query.side_effect = [q1, q2]
-        q1.filter.return_value.first.return_value = None
-        q2.filter.return_value.first.return_value = old_self
-        result = acquire_lease(session, "w1", "host1", 100, 60)
+    def test_acquire_overwrite_own_expired_lease(self):
+        repo = FakeWorkerLeaseRepository(
+            {"w1": _lease("w1", lease_until=FIXED_NOW - timedelta(seconds=1))}
+        )
+        result = acquire_lease(
+            repo, "w1", "host1", 100, 60, now=FIXED_NOW
+        )
         assert result is True
-        assert old_self.status == STATUS_RUNNING
+        assert repo._records["w1"].lease_until > FIXED_NOW
 
 
 class TestHeartbeat:
-    """heartbeat 测试."""
+    """heartbeat 测试。"""
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_heartbeat_extends_lease(self, mock_now):
-        """心跳应延长 lease_until."""
-        session = MagicMock()
-        record = _make_record("w1", lease_until=FIXED_NOW)
-        session.query.return_value.filter.return_value.first.return_value = record
-        result = heartbeat(session, "w1", "host1", 100, 60)
+    def test_heartbeat_extends_lease(self):
+        repo = FakeWorkerLeaseRepository(
+            {"w1": _lease("w1", lease_until=FIXED_NOW)}
+        )
+        result = heartbeat(
+            repo, "w1", "host1", 100, 60, now=FIXED_NOW
+        )
         assert result.worker_id == "w1"
         assert result.status == STATUS_RUNNING
+        assert result.lease_until > FIXED_NOW
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_heartbeat_creates_new_if_not_exists(self, mock_now):
-        """无记录时 heartbeat 应创建新记录."""
-        session = MagicMock()
-        session.query.return_value.filter.return_value.first.return_value = None
-        result = heartbeat(session, "w1", "host1", 100, 60)
+    def test_heartbeat_creates_new_if_not_exists(self):
+        repo = FakeWorkerLeaseRepository()
+        result = heartbeat(
+            repo, "w1", "host1", 100, 60, now=FIXED_NOW
+        )
         assert result.worker_id == "w1"
-        session.add.assert_called_once()
+        assert repo._records["w1"].worker_id == "w1"
 
 
 class TestReleaseLease:
-    """release_lease 测试."""
+    """release_lease 测试。"""
 
     def test_release_existing_lease(self):
-        """释放已有租约."""
-        session = MagicMock()
-        record = _make_record("w1")
-        session.query.return_value.filter.return_value.first.return_value = record
-        result = release_lease(session, "w1")
-        assert result is True
-        assert record.status == STATUS_STOPPED
+        repo = FakeWorkerLeaseRepository({"w1": _lease("w1")})
+        assert release_lease(repo, "w1") is True
+        assert repo._records["w1"].status == STATUS_STOPPED
 
     def test_release_nonexistent_lease(self):
-        """释放不存在的租约返回 False."""
-        session = MagicMock()
-        session.query.return_value.filter.return_value.first.return_value = None
-        result = release_lease(session, "nonexistent")
-        assert result is False
+        repo = FakeWorkerLeaseRepository()
+        assert release_lease(repo, "nonexistent") is False
 
 
 class TestIsLeaseActive:
-    """is_lease_active 测试."""
+    """is_lease_active 测试。"""
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_active_lease(self, mock_now):
-        """有效租约返回 True."""
-        session = MagicMock()
-        q = session.query.return_value
-        q.filter.return_value.first.return_value = _make_record("w1")
-        assert is_lease_active(session, "w1") is True
+    def test_active_lease(self):
+        repo = FakeWorkerLeaseRepository({"w1": _lease("w1")})
+        assert is_lease_active(repo, "w1", now=FIXED_NOW) is True
 
-    @patch("backend.application.services.worker_heartbeat._now", return_value=FIXED_NOW)
-    def test_no_active_lease(self, mock_now):
-        """无有效租约返回 False."""
-        session = MagicMock()
-        q = session.query.return_value
-        q.filter.return_value.first.return_value = None
-        assert is_lease_active(session, "w1") is False
+    def test_no_active_lease(self):
+        repo = FakeWorkerLeaseRepository()
+        assert is_lease_active(repo, "w1", now=FIXED_NOW) is False
 
 
 class TestListExpiredLeases:
-    """list_expired_leases 测试."""
+    """list_expired_leases 测试。"""
 
     def test_returns_expired_only(self):
-        """只返回已过期的租约."""
-        session = MagicMock()
-        expired = _make_record("w1", lease_until=FIXED_NOW - timedelta(seconds=1))
-        session.query.return_value.filter.return_value.all.return_value = [expired]
-        result = list_expired_leases(session, now=FIXED_NOW)
-        assert len(result) == 1
-        assert result[0].worker_id == "w1"
+        repo = FakeWorkerLeaseRepository(
+            {
+                "w1": _lease(
+                    "w1",
+                    lease_until=FIXED_NOW - timedelta(seconds=1),
+                ),
+                "w2": _lease("w2"),
+            }
+        )
+        result = list_expired_leases(repo, now=FIXED_NOW)
+        assert [item.worker_id for item in result] == ["w1"]
 
 
 class TestNow:
-    """_now 时区语义测试."""
+    """_now 时区语义测试。"""
 
     def test_now_is_aware_utc(self):
-        """心跳当前时间必须是 aware UTC。"""
         now = _now()
         assert now.tzinfo is not None
         assert now.utcoffset() == timedelta(0)

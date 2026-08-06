@@ -17,6 +17,7 @@ from backend.domain.rules.material_rule_range import MaterialRuleRange
 from backend.domain.rules.rule_set import RuleSet
 from backend.domain.rules.rule_version import RuleVersion
 from backend.domain.rules.template_price_rule import TemplatePriceRule
+from backend.domain.worker.worker_lease import WorkerLease
 
 
 class TaskRepository(Protocol):
@@ -143,3 +144,27 @@ class ChangeLogRepository(Protocol):
     """ConfigChangeLog 仓储协议."""
 
     def add(self, log: ConfigChangeLog) -> ConfigChangeLog: ...
+
+
+class WorkerLeaseRepository(Protocol):
+    """Worker 租约仓储协议。"""
+
+    def acquire(
+        self,
+        worker_id: str,
+        host: str,
+        pid: int,
+        lease_until: datetime,
+        heartbeat_at: datetime,
+    ) -> bool: ...
+    def heartbeat(
+        self,
+        worker_id: str,
+        host: str,
+        pid: int,
+        lease_until: datetime,
+        heartbeat_at: datetime,
+    ) -> WorkerLease: ...
+    def release(self, worker_id: str) -> bool: ...
+    def is_active(self, worker_id: str, now: datetime) -> bool: ...
+    def list_expired(self, now: datetime) -> list[WorkerLease]: ...

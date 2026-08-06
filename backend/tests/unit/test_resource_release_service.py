@@ -164,7 +164,7 @@ class TestReleaseAfterCompletion:
         ledger_repo = FakeLedgerRepository()
         released: list[str] = []
 
-        def fake_release(session, worker_id: str) -> bool:
+        def fake_release(lease_repo, worker_id: str) -> bool:
             released.append(worker_id)
             return True
 

@@ -19,6 +19,9 @@ from backend.application.services.worker_heartbeat import (
 )
 from backend.domain.worker.worker_lease import STATUS_RUNNING, STATUS_STOPPED
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.repositories.worker_lease_repository import (
+    SqlAlchemyWorkerLeaseRepository,
+)
 
 
 def _setup_temp_db(db_url: str):
@@ -99,17 +102,35 @@ class TestWorkerHeartbeatIntegration:
                 from sqlalchemy.orm import Session
                 session = Session(engine)
                 try:
-                    ok = acquire_lease(session, "w1", "host1", 100, 60)
+                    ok = acquire_lease(
+                        SqlAlchemyWorkerLeaseRepository(session),
+                        "w1",
+                        "host1",
+                        100,
+                        60,
+                    )
                     assert ok is True, "首次获取租约应成功"
                     session.commit()
-                    assert is_lease_active(session, "w1") is True
-                    result = heartbeat(session, "w1", "host1", 100, 60)
+                    assert is_lease_active(
+                        SqlAlchemyWorkerLeaseRepository(session), "w1"
+                    ) is True
+                    result = heartbeat(
+                        SqlAlchemyWorkerLeaseRepository(session),
+                        "w1",
+                        "host1",
+                        100,
+                        60,
+                    )
                     assert result.worker_id == "w1"
                     assert result.status == STATUS_RUNNING
                     session.commit()
-                    assert release_lease(session, "w1") is True
+                    assert release_lease(
+                        SqlAlchemyWorkerLeaseRepository(session), "w1"
+                    ) is True
                     session.commit()
-                    assert is_lease_active(session, "w1") is False
+                    assert is_lease_active(
+                        SqlAlchemyWorkerLeaseRepository(session), "w1"
+                    ) is False
                 finally:
                     session.close()
             finally:
@@ -125,9 +146,21 @@ class TestWorkerHeartbeatIntegration:
                 s1 = Session(engine)
                 s2 = Session(engine)
                 try:
-                    assert acquire_lease(s1, "w1", "host1", 100, 60) is True
+                    assert acquire_lease(
+                        SqlAlchemyWorkerLeaseRepository(s1),
+                        "w1",
+                        "host1",
+                        100,
+                        60,
+                    ) is True
                     s1.commit()
-                    assert acquire_lease(s2, "w2", "host2", 200, 60) is False
+                    assert acquire_lease(
+                        SqlAlchemyWorkerLeaseRepository(s2),
+                        "w2",
+                        "host2",
+                        200,
+                        60,
+                    ) is False
                 finally:
                     s1.close()
                     s2.close()
@@ -143,9 +176,21 @@ class TestWorkerHeartbeatIntegration:
                 from sqlalchemy.orm import Session
                 session = Session(engine)
                 try:
-                    r1 = heartbeat(session, "w1", "host1", 100, 60)
+                    r1 = heartbeat(
+                        SqlAlchemyWorkerLeaseRepository(session),
+                        "w1",
+                        "host1",
+                        100,
+                        60,
+                    )
                     session.commit()
-                    r2 = heartbeat(session, "w1", "hostA", 999, 120)
+                    r2 = heartbeat(
+                        SqlAlchemyWorkerLeaseRepository(session),
+                        "w1",
+                        "hostA",
+                        999,
+                        120,
+                    )
                     session.commit()
                     rows = session.execute(
                         sa_text("SELECT count(*) FROM worker_lease WHERE worker_id='w1'")
@@ -183,7 +228,9 @@ class TestWorkerHeartbeatIntegration:
                         },
                     )
                     session.commit()
-                    expired = list_expired_leases(session, now=now)
+                    expired = list_expired_leases(
+                        SqlAlchemyWorkerLeaseRepository(session), now=now
+                    )
                     assert len(expired) == 1
                     assert expired[0].worker_id == "expired-1"
                 finally:
