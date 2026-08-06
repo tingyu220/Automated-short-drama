@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
-import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text as sa_text
@@ -16,6 +15,15 @@ from backend.application.services.completion_service import complete_task
 from backend.domain.queue.queue_item import QueueState
 from backend.domain.tasks.drama_task import TaskStatus
 from backend.infrastructure.database.engine import create_app_engine
+from backend.infrastructure.database.repositories.ledger_repository import (
+    SqlAlchemyLedgerRepository,
+)
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
+from backend.infrastructure.database.repositories.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 
 
 def _setup_temp_db(db_url: str):
@@ -71,10 +79,15 @@ class TestCompleteTaskIntegration:
 
                 # 执行 complete_task
                 with Session(engine, expire_on_commit=False) as session:
+                    queue_repo = SqlAlchemyQueueRepository(session)
+                    task_repo = SqlAlchemyTaskRepository(session)
+                    ledger_repo = SqlAlchemyLedgerRepository(session)
                     ledger = complete_task(
-                        session,
                         queue_id,
                         "worker-1",
+                        queue_repo,
+                        task_repo,
+                        ledger_repo,
                         {
                             "album_id": "alb-123",
                             "product_id": "prod-456",

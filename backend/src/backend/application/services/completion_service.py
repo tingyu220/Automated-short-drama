@@ -4,36 +4,34 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
-
 from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.ledger.task_ledger import TaskLedger
+from backend.domain.ports.repositories import (
+    LedgerRepository,
+    QueueRepository,
+    TaskRepository,
+)
 from backend.domain.queue.queue_item import QueueState
 from backend.domain.queue.state_machine import QueueStateMachine
 from backend.domain.tasks.drama_task import TaskStatus
-from backend.infrastructure.database.repositories.ledger_repository import (
-    SqlAlchemyLedgerRepository,
-)
-from backend.infrastructure.database.repositories.queue_repository import (
-    SqlAlchemyQueueRepository,
-)
-from backend.infrastructure.database.repositories.task_repository import (
-    SqlAlchemyTaskRepository,
-)
 
 
 def complete_task(
-    session: Session,
     queue_item_id: str,
     worker_id: str,
+    queue_repo: QueueRepository,
+    task_repo: TaskRepository,
+    ledger_repo: LedgerRepository,
     ledger_fields: dict | None = None,
 ) -> TaskLedger:
     """完成出队：校验归属、迁移状态、更新 DramaTask、生成台账。
 
     Args:
-        session: SQLAlchemy 会话。
         queue_item_id: 队列项 ID。
         worker_id: 完成该任务的 worker。
+        queue_repo: QueueRepository 实现（注入）。
+        task_repo: TaskRepository 实现（注入）。
+        ledger_repo: LedgerRepository 实现（注入）。
         ledger_fields: 台账补充字段（album_id / product_id / external_task_id /
                        task_name / rule_version / config_version）。
 
@@ -41,13 +39,9 @@ def complete_task(
         创建好的 TaskLedger。
 
     Raises:
-        NotFoundError: 队列项不存在。
+        NotFoundError: 队列项不存在或关联 DramaTask 不存在。
         ConflictError: claimed_by 不匹配或状态不是 CLAIMED/RUNNING。
     """
-    queue_repo = SqlAlchemyQueueRepository(session)
-    task_repo = SqlAlchemyTaskRepository(session)
-    ledger_repo = SqlAlchemyLedgerRepository(session)
-
     # 1. 读取队列项
     item = queue_repo.get(queue_item_id)
     if item is None:
@@ -67,7 +61,7 @@ def complete_task(
             f"不允许完成出队"
         )
 
-    # 4. 状态迁移 → COMPLETED
+    # 4. 状态迁移 -> COMPLETED
     item.state = QueueStateMachine.transition(item.state, QueueState.COMPLETED)
     queue_repo.update(item)
 
@@ -95,8 +89,4 @@ def complete_task(
         rule_version=fields.get("rule_version", ""),
         config_version=fields.get("config_version", ""),
     )
-    saved = ledger_repo.add(ledger)
-
-    # 7. 提交并返回
-    session.flush()
-    return saved
+    return ledger_repo.add(ledger)
