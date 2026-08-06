@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import tempfile
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from alembic import command
@@ -38,6 +38,13 @@ def _setup_temp_db(db_url: str):
     )
     command.upgrade(alembic_cfg, "head")
     return engine
+
+
+def _assert_lease_until(lease_until: datetime | None, seconds: int = 60) -> None:
+    """断言租约截止时间约为当前时间 + seconds."""
+    assert lease_until is not None
+    now_real = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert abs((lease_until - now_real).total_seconds() - seconds) < 5
 
 
 class TestQueueFullScenario:
@@ -83,7 +90,7 @@ class TestQueueFullScenario:
                 with Session(engine, expire_on_commit=False) as session:
                     queue_repo = SqlAlchemyQueueRepository(session)
                     enqueued, claimed = advance_queue(
-                        queue_repo, now, "worker-1", lease_seconds=60
+                        session, queue_repo, now, "worker-1", lease_seconds=60
                     )
                     session.commit()
 
@@ -93,7 +100,7 @@ class TestQueueFullScenario:
                     assert claimed.id == queue_id
                     assert claimed.state == QueueState.CLAIMED
                     assert claimed.claimed_by == "worker-1"
-                    assert claimed.lease_until == now + timedelta(seconds=60)
+                    _assert_lease_until(claimed.lease_until)
 
                 # 3. 模拟 Worker 崩溃：租约过期
                 with Session(engine) as session:
@@ -125,7 +132,7 @@ class TestQueueFullScenario:
                 with Session(engine, expire_on_commit=False) as session:
                     queue_repo = SqlAlchemyQueueRepository(session)
                     enqueued_again, claimed_again = advance_queue(
-                        queue_repo, now, "worker-1", lease_seconds=60
+                        session, queue_repo, now, "worker-1", lease_seconds=60
                     )
                     session.commit()
 
@@ -134,7 +141,7 @@ class TestQueueFullScenario:
                     assert claimed_again.id == queue_id
                     assert claimed_again.state == QueueState.CLAIMED
                     assert claimed_again.claimed_by == "worker-1"
-                    assert claimed_again.lease_until == now + timedelta(seconds=60)
+                    _assert_lease_until(claimed_again.lease_until)
 
                 # 6. 完成出队：QueueItem=COMPLETED、DramaTask=COMPLETED、台账落库
                 with Session(engine, expire_on_commit=False) as session:
