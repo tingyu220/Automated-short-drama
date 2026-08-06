@@ -1,13 +1,13 @@
 """启动迁移集成测试：run_migrations + automation_worker --once."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text as sa_text
 
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.migrations import run_migrations
@@ -70,7 +70,7 @@ class TestAutomationWorkerOnce:
             db_path = Path(tmpdir) / "test.db"
             db_url = f"sqlite:///{db_path}"
 
-            env = {"WORKBUDDY_DATABASE_URL": db_url, **__import__("os").environ}
+            env = {**os.environ, "WORKBUDDY_DATABASE_URL": db_url}
             result = subprocess.run(
                 [
                     sys.executable,
