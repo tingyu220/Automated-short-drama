@@ -1,0 +1,14 @@
+{
+  "login_url": "https://example.com/tomato/login",
+  "search_input": "input[name=search]",
+  "search_button": "button:has-text('搜索')",
+  "result_row": "tbody tr",
+  "detail_link": "a:has-text('详情')",
+  "generate_button": "button:has-text('生成链接')",
+  "episode_option": "li[class*=episode]",
+  "confirm_button": "button:has-text('确认')",
+  "link_input": "input[readonly][value*='http']",
+  "template_item": "[data-testid=template-item]",
+  "tier_price": ".tier-price",
+  "page_order": ".page-order"
+}
