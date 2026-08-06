@@ -1,22 +1,36 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
+import {
+  Monitor,
+  List,
+  Switch,
+  Document,
+  Setting,
+  Warning,
+  Tickets,
+  DArrowRight,
+  DArrowLeft
+} from "@element-plus/icons-vue"
 
-defineProps<{ collapsed: boolean }>()
+const props = defineProps<{ collapsed: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 
 const route = useRoute()
 const router = useRouter()
 
+/** 一级菜单项：icon 为导入的组件引用 */
 const menuItems = [
-  { path: "/", name: "workspace", label: "工作台", icon: "Monitor" },
-  { path: "/tasks", name: "tasks", label: "今日任务", icon: "List" },
-  { path: "/queue", name: "queue", label: "自动化队列", icon: "Switch" },
-  { path: "/plans", name: "plans", label: "计划管理", icon: "Document" },
-  { path: "/rules", name: "rules", label: "规则与配置", icon: "Setting" },
-  { path: "/exceptions", name: "exceptions", label: "异常中心", icon: "Warning" },
-  { path: "/records", name: "records", label: "系统记录", icon: "Tickets" }
+  { path: "/", name: "workspace", label: "工作台", icon: Monitor },
+  { path: "/tasks", name: "tasks", label: "今日任务", icon: List },
+  { path: "/queue", name: "queue", label: "自动化队列", icon: Switch },
+  { path: "/plans", name: "plans", label: "计划管理", icon: Document },
+  { path: "/rules", name: "rules", label: "规则与配置", icon: Setting },
+  { path: "/exceptions", name: "exceptions", label: "异常中心", icon: Warning },
+  { path: "/records", name: "records", label: "系统记录", icon: Tickets }
 ]
+
+const toggleIcon = computed(() => props.collapsed ? DArrowRight : DArrowLeft)
 
 const currentRoute = computed(() => route.name as string)
 
@@ -46,9 +60,7 @@ function navigate(path: string) {
       </button>
     </nav>
     <button class="sidebar__toggle" @click="emit('toggle')">
-      <el-icon>
-        <component :is="collapsed ? 'DArrowRight' : 'DArrowLeft'" />
-      </el-icon>
+      <el-icon><component :is="toggleIcon" /></el-icon>
     </button>
   </aside>
 </template>

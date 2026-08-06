@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from "vue"
+import { Fold } from "@element-plus/icons-vue"
 import { useSystemStore } from "@/app/stores/system"
 
 defineEmits<{ toggleSidebar: [] }>()
 
+/** 直接使用 Pinia 全局单例，无需 prop 传递 */
 const systemStore = useSystemStore()
 
 const statusLabels = [
