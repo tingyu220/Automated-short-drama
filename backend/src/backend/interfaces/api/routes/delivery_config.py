@@ -7,9 +7,13 @@ from pydantic import BaseModel
 from backend.application.services.delivery_config_service import (
     DeliveryConfigSnapshotService,
 )
+from backend.application.services.delivery_config_settings_service import (
+    DeliveryConfigSettingsService,
+)
 
 router = APIRouter(tags=["delivery-config"])
 _service = DeliveryConfigSnapshotService()
+_settings_service = DeliveryConfigSettingsService()
 
 
 def _guard(exc: FileNotFoundError) -> HTTPException:
@@ -20,6 +24,12 @@ class MappingProposalBody(BaseModel):
     """用户编辑后的 CID 映射列表。"""
 
     rows: list[dict]
+
+
+class SettingsBody(BaseModel):
+    """面板编辑后的通用配置。"""
+
+    values: dict
 
 
 @router.get("/config/delivery/summary")
@@ -96,4 +106,26 @@ def save_delivery_mapping_proposal(body: MappingProposalBody) -> dict:
     return {
         "saved_at": payload.get("saved_at"),
         "count": len(payload.get("rows", [])),
+    }
+
+
+@router.get("/config/delivery/settings")
+def delivery_config_settings() -> dict:
+    """返回可编辑配置默认值、本地覆盖和下拉选项。"""
+    try:
+        return _settings_service.get_settings()
+    except FileNotFoundError as exc:
+        raise _guard(exc) from exc
+
+
+@router.put("/config/delivery/settings")
+def save_delivery_config_settings(body: SettingsBody) -> dict:
+    """保存面板编辑后的通用配置到本地覆盖文件。"""
+    try:
+        payload = _settings_service.save_settings(body.values)
+    except FileNotFoundError as exc:
+        raise _guard(exc) from exc
+    return {
+        "saved_at": payload.get("saved_at"),
+        "count": payload.get("count", 0),
     }

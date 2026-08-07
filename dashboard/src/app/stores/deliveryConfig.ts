@@ -15,6 +15,12 @@ interface DeliverySummary {
   mapping_proposal_count: number
 }
 
+interface ConfigSettings {
+  values: Record<string, Record<string, unknown>>
+  options: Record<string, unknown[]>
+  saved_at: string | null
+}
+
 export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
   const summary = ref<DeliverySummary | null>(null)
   const cids = ref<Record<string, unknown>[]>([])
@@ -23,8 +29,11 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
   const productLibraries = ref<Record<string, unknown>[]>([])
   const accounts = ref<Record<string, unknown>[]>([])
   const mappingProposal = ref<Record<string, unknown>[]>([])
+  const settings = ref<Record<string, Record<string, unknown>>>({})
+  const settingsOptions = ref<Record<string, unknown[]>>({})
   const loading = ref(false)
   const saving = ref(false)
+  const settingsSaving = ref(false)
   const error = ref<string | null>(null)
 
   async function loadForCategory(category: string) {
@@ -42,7 +51,8 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
         openData,
         libraryData,
         accountData,
-        mappingData
+        mappingData,
+        settingsData
       ] = await Promise.all([
         apiGet<DeliverySummary>("/config/delivery/summary"),
         apiGet<{ rows: Record<string, unknown>[] }>("/config/delivery/cids"),
@@ -60,7 +70,8 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
         ),
         apiGet<{ rows: Record<string, unknown>[] }>(
           "/config/delivery/mapping-proposal"
-        )
+        ),
+        apiGet<ConfigSettings>("/config/delivery/settings")
       ])
       summary.value = summaryData
       cids.value = cidsData.rows
@@ -69,8 +80,12 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
       productLibraries.value = libraryData.rows
       accounts.value = accountData.rows
       mappingProposal.value = mappingData.rows
+      settings.value = settingsData.values
+      settingsOptions.value = settingsData.options
     } catch (err) {
       error.value = toErrorMessage(err)
+      settings.value = {}
+      settingsOptions.value = {}
     } finally {
       loading.value = false
     }
@@ -94,6 +109,24 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
     }
   }
 
+  async function saveSettings(values: Record<string, Record<string, unknown>>) {
+    settingsSaving.value = true
+    error.value = null
+    try {
+      const result = await apiPut<{ saved_at: string; count: number }>(
+        "/config/delivery/settings",
+        { values }
+      )
+      await loadForCategory("cid")
+      return result
+    } catch (err) {
+      error.value = toErrorMessage(err)
+      return null
+    } finally {
+      settingsSaving.value = false
+    }
+  }
+
   return {
     summary,
     cids,
@@ -102,10 +135,14 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
     productLibraries,
     accounts,
     mappingProposal,
+    settings,
+    settingsOptions,
     loading,
     saving,
+    settingsSaving,
     error,
     loadForCategory,
-    saveMappingProposal
+    saveMappingProposal,
+    saveSettings
   }
 })

@@ -422,6 +422,9 @@ describe("useDeliveryConfigStore", () => {
           mapping_proposal_count: 1
         })
       }
+      if (url.includes("/config/delivery/settings")) {
+        return okJson({ values: {}, options: {}, saved_at: null })
+      }
       return okJson({ rows: [], count: 0 })
     })
 
@@ -429,7 +432,7 @@ describe("useDeliveryConfigStore", () => {
     await store.loadForCategory("cid")
 
     expect(store.summary?.counts.cid).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(7)
+    expect(fetchMock).toHaveBeenCalledTimes(8)
     expect(store.error).toBeNull()
   })
 
@@ -446,6 +449,9 @@ describe("useDeliveryConfigStore", () => {
           mapping_proposal_count: 1
         })
       }
+      if (url.includes("/config/delivery/settings")) {
+        return okJson({ values: {}, options: {}, saved_at: null })
+      }
       return okJson({ rows: [], count: 0 })
     })
 
@@ -457,6 +463,39 @@ describe("useDeliveryConfigStore", () => {
       "/api/config/delivery/mapping-proposal",
       expect.objectContaining({ method: "PUT" })
     )
+    expect(store.error).toBeNull()
+  })
+
+  it("saveSettings 保存通用配置并重新拉取", async () => {
+    const fetchMock = stubFetch()
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT" && url.includes("/settings")) {
+        return okJson({ saved_at: "2026-08-07T00:00:00+00:00", count: 3 })
+      }
+      if (url.includes("/config/delivery/settings")) {
+        return okJson({
+          values: { runtime: { scan_interval_seconds: 7200 } },
+          options: {},
+          saved_at: "2026-08-07T00:00:00+00:00"
+        })
+      }
+      if (url.includes("/config/delivery/summary")) {
+        return okJson({
+          counts: { cid: 1, ad_presets: 1, open_presets: 1 },
+          extracted_at: "2026-08-07T00:00:00+00:00",
+          mapping_proposal_count: 1
+        })
+      }
+      return okJson({ rows: [], count: 0 })
+    })
+
+    const store = useDeliveryConfigStore()
+    const result = await store.saveSettings({
+      runtime: { scan_interval_seconds: 7200 }
+    })
+
+    expect(result?.count).toBe(3)
+    expect(store.settings.runtime?.scan_interval_seconds).toBe(7200)
     expect(store.error).toBeNull()
   })
 })

@@ -54,6 +54,14 @@ interface PlatformResource {
   url: string
 }
 
+interface SettingField {
+  key: string
+  label: string
+  type: "input" | "number" | "select"
+  options?: string[]
+  optionsKey?: string
+}
+
 const props = defineProps<{
   category: string
   ruleSets: RuleSet[]
@@ -67,6 +75,9 @@ const props = defineProps<{
   deliveryLoading?: boolean
   saving?: boolean
   platformResources?: PlatformResource[]
+  settings?: Record<string, Record<string, any>>
+  settingsOptions?: Record<string, unknown[]>
+  settingsSaving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -74,6 +85,7 @@ const emit = defineEmits<{
   (e: "saveDraft", payload: RuleDraftPayload): void
   (e: "publish", payload: RulePublishPayload): void
   (e: "saveMapping", rows: MappingRow[]): void
+  (e: "saveSettings", values: Record<string, Record<string, any>>): void
 }>()
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -207,9 +219,95 @@ watch(
   { immediate: true }
 )
 
+const SETTING_FIELDS: Record<string, SettingField[]> = {
+  link: [
+    { key: "iaa_episode_threshold", label: "IAA 选集阈值", type: "number" },
+    { key: "iap_2_9_target", label: "IAP 2.9 目标价", type: "number" },
+    { key: "iap_2_9_min", label: "IAP 2.9 最低价", type: "number" },
+    { key: "iap_2_9_max", label: "IAP 2.9 最高价", type: "number" },
+    { key: "iap_9_9_target", label: "IAP 9.9 目标价", type: "number" },
+    { key: "iap_9_9_min", label: "IAP 9.9 最低价", type: "number" },
+    { key: "iap_9_9_max", label: "IAP 9.9 最高价", type: "number" },
+    {
+      key: "same_distance_strategy",
+      label: "同距离策略",
+      type: "select",
+      options: ["HIGHER_PRICE_FIRST", "LOWER_PRICE_FIRST"]
+    }
+  ],
+  douyin: [
+    {
+      key: "douyin_account",
+      label: "抖音号",
+      type: "select",
+      optionsKey: "douyin_accounts"
+    }
+  ],
+  platform: [
+    { key: "delivery_base_url", label: "投放系统地址", type: "input" },
+    { key: "ocean_base_url", label: "巨量地址", type: "input" },
+    { key: "tomato_base_url", label: "番茄地址", type: "input" }
+  ],
+  naming: [
+    {
+      key: "iaa_project_template",
+      label: "端免项目名模板",
+      type: "select",
+      optionsKey: "naming_templates"
+    },
+    {
+      key: "iap_project_template",
+      label: "端付项目名模板",
+      type: "select",
+      optionsKey: "naming_templates"
+    },
+    {
+      key: "test_project_template",
+      label: "测试项目名模板",
+      type: "select",
+      optionsKey: "naming_templates"
+    }
+  ],
+  runtime: [
+    { key: "scan_interval_seconds", label: "扫描间隔（秒）", type: "number" },
+    { key: "login_wait_seconds", label: "登录等待（秒）", type: "number" },
+    { key: "price_tiers", label: "价格档位", type: "input" },
+    { key: "material_group_cap", label: "单素材组上限", type: "number" },
+    { key: "max_project_count", label: "最大项目数", type: "number" }
+  ],
+  account: [
+    {
+      key: "account_owner",
+      label: "账户归属",
+      type: "select",
+      optionsKey: "account_owners"
+    },
+    {
+      key: "test_account_source",
+      label: "测试户来源",
+      type: "select",
+      options: ["IAA_B4", "TEST_TABLE"]
+    }
+  ]
+}
+
 const categoryLabel = computed(
   () => CATEGORY_LABEL[props.category] ?? props.category
 )
+
+const settingsDraft = ref<Record<string, any>>({})
+
+watch(
+  () => [props.settings, props.category] as const,
+  () => {
+    settingsDraft.value = {
+      ...((props.settings ?? {})[props.category] ?? {})
+    }
+  },
+  { immediate: true }
+)
+
+const settingFields = computed(() => SETTING_FIELDS[props.category] ?? [])
 
 const ruleSetId = computed(
   () =>
@@ -319,6 +417,18 @@ function joinCandidates(value: unknown): string {
 
 function saveMapping() {
   emit("saveMapping", mappingDraft.value)
+}
+
+function fieldOptions(field: SettingField): string[] {
+  if (field.options) return field.options
+  if (field.optionsKey) {
+    return (props.settingsOptions?.[field.optionsKey] ?? []).map(String)
+  }
+  return []
+}
+
+function saveSettingsForm() {
+  emit("saveSettings", { [props.category]: settingsDraft.value })
 }
 
 function saveDraft() {
@@ -631,151 +741,57 @@ function publish() {
       </div>
     </template>
 
-    <template v-else-if="isDouyin">
+    <template
+      v-else-if="
+        isDouyin ||
+        isLink ||
+        isAccount ||
+        isPlatform ||
+        isNaming ||
+        isRuntime
+      "
+    >
       <div class="rule-editor__sync-line">
-        <span>抖音号 {{ douyinAccounts.length }} 个 / 账户池 {{ accountStats.count }} 条</span>
+        <span>{{ categoryLabel }} 配置</span>
         <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
-      </div>
-      <div v-if="douyinAccounts.length" class="rule-editor__chip-list">
-        <span
-          v-for="item in douyinAccounts"
-          :key="item"
-          class="rule-editor__chip"
+        <ElButton
+          type="primary"
+          size="small"
+          :loading="settingsSaving"
+          @click="saveSettingsForm"
         >
-          {{ item }}
-        </span>
+          保存修改
+        </ElButton>
       </div>
-      <p class="rule-editor__note">
-        当前抖音号在 CID预设 分类中可直接修改，换号后在这里同步更新。
-      </p>
-    </template>
-
-    <template v-else-if="isLink">
-      <div class="rule-editor__detail-grid">
-        <div
-          v-for="row in linkRuleRows"
-          :key="row.name"
-          class="rule-editor__detail-item"
+      <div class="rule-editor__form">
+        <label
+          v-for="field in settingFields"
+          :key="field.key"
+          class="rule-editor__field"
         >
-          <span class="rule-editor__detail-label">{{ row.name }}</span>
-          <span class="rule-editor__detail-value">{{ row.value }}</span>
-          <span class="rule-editor__detail-source">{{ row.source }}</span>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="isAccount">
-      <div class="rule-editor__stats">
-        <div class="rule-editor__stat">
-          <span>账户总数</span>
-          <strong>{{ accountStats.count }}</strong>
-        </div>
-        <div class="rule-editor__stat">
-          <span>主体数</span>
-          <strong>{{ accountStats.companies }}</strong>
-        </div>
-        <div class="rule-editor__stat">
-          <span>变现类型</span>
-          <strong>
-            {{
-              accountStats.payTypes
-                .map(([type, count]) => `${type} ${count}`)
-                .join(" / ")
-            }}
-          </strong>
-        </div>
-      </div>
-      <div class="rule-editor__sync-line">
-        <span>账户池来自投放系统同步快照</span>
-        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
-      </div>
-      <div class="rule-editor__scroll">
-        <table class="rule-editor__table">
-          <thead>
-            <tr>
-              <th>账户名称</th>
-              <th>账户ID</th>
-              <th>CID</th>
-              <th>主体</th>
-              <th>变现</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in (accounts ?? []).slice(0, 30)"
-              :key="String(row.fiAdvertiserId)"
-            >
-              <td>{{ row.fiAdvertiserName }}</td>
-              <td>{{ row.fiAdvertiserId }}</td>
-              <td>{{ row.cid }}</td>
-              <td>{{ row.oceanCompanyName }}</td>
-              <td>{{ row.payType || "未知" }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
-
-    <template v-else-if="isPlatform">
-      <div class="rule-editor__sync-line">
-        <span>平台连接 {{ platformResources?.length ?? 0 }} 个</span>
-      </div>
-      <div class="rule-editor__scroll">
-        <table class="rule-editor__table">
-          <thead>
-            <tr>
-              <th>平台</th>
-              <th>登录状态</th>
-              <th>地址</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in platformResources ?? []"
-              :key="row.platform"
-            >
-              <td>{{ row.platform }}</td>
-              <td>{{ row.status }}</td>
-              <td>{{ row.url }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
-
-    <template v-else-if="isNaming">
-      <div class="rule-editor__sync-line">
-        <span>命名模板 {{ namingTemplates.length }} 条</span>
-        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
-      </div>
-      <div class="rule-editor__scroll">
-        <table class="rule-editor__table">
-          <thead>
-            <tr>
-              <th>类型</th>
-              <th>模板</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in namingTemplates" :key="row.template">
-              <td>{{ row.type }}</td>
-              <td class="rule-editor__template">{{ row.template }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
-
-    <template v-else-if="isRuntime">
-      <div class="rule-editor__detail-grid">
-        <div
-          v-for="row in runtimeRows"
-          :key="row.name"
-          class="rule-editor__detail-item"
-        >
-          <span class="rule-editor__detail-label">{{ row.name }}</span>
-          <span class="rule-editor__detail-value">{{ row.value }}</span>
-        </div>
+          <span>{{ field.label }}</span>
+          <ElInputNumber
+            v-if="field.type === 'number'"
+            v-model="settingsDraft[field.key]"
+            :min="0"
+            controls-position="right"
+          />
+          <ElSelect
+            v-else-if="field.type === 'select'"
+            v-model="settingsDraft[field.key]"
+            filterable
+            allow-create
+            default-first-option
+          >
+            <ElOption
+              v-for="option in fieldOptions(field)"
+              :key="option"
+              :label="option"
+              :value="option"
+            />
+          </ElSelect>
+          <ElInput v-else v-model="settingsDraft[field.key]" />
+        </label>
       </div>
     </template>
 

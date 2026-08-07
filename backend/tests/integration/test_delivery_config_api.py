@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 from backend.application.services.delivery_config_service import (
     DeliveryConfigSnapshotService,
 )
+from backend.application.services.delivery_config_settings_service import (
+    DeliveryConfigSettingsService,
+)
 from backend.interfaces.api.main import create_app
 from backend.interfaces.api.routes import delivery_config as delivery_route
 
@@ -79,3 +82,24 @@ def test_put_mapping_proposal_saves_and_merges(tmp_path, monkeypatch):
     assert saved.status_code == 200
     assert saved.json()["count"] == 1
     assert fetched.json()["rows"][0]["ad_preset"] == "手动广告预设"
+
+
+def test_settings_get_and_put(tmp_path, monkeypatch):
+    _write_snapshot(tmp_path)
+    service = DeliveryConfigSettingsService(extracted_dir=tmp_path)
+    monkeypatch.setattr(delivery_route, "_settings_service", service)
+    client = TestClient(create_app(dist_dir=None))
+
+    fetched = client.get("/api/config/delivery/settings")
+    saved = client.put(
+        "/api/config/delivery/settings",
+        json={"values": {"douyin": {"douyin_account": "123456"}}},
+    )
+    fetched_again = client.get("/api/config/delivery/settings")
+
+    assert fetched.status_code == 200
+    assert saved.status_code == 200
+    assert (
+        fetched_again.json()["values"]["douyin"]["douyin_account"]
+        == "123456"
+    )

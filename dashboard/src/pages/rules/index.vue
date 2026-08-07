@@ -174,6 +174,17 @@ async function onSaveMapping(rows: MappingRow[]) {
   }
   ElMessage.success(`CID 映射已保存，共 ${result.count} 条`)
 }
+
+async function onSaveSettings(
+  values: Record<string, Record<string, unknown>>
+) {
+  const result = await deliveryConfigStore.saveSettings(values)
+  if (deliveryConfigStore.error || !result) {
+    ElMessage.error(deliveryConfigStore.error ?? "保存配置失败")
+    return
+  }
+  ElMessage.success(`「${selectedCategory.value}」配置已保存`)
+}
 </script>
 
 <template>
@@ -217,10 +228,14 @@ async function onSaveMapping(rows: MappingRow[]) {
           :delivery-loading="deliveryConfigStore.loading"
           :saving="deliveryConfigStore.saving"
           :platform-resources="platformResources"
+          :settings="deliveryConfigStore.settings"
+          :settings-options="deliveryConfigStore.settingsOptions"
+          :settings-saving="deliveryConfigStore.settingsSaving"
           v-model:price-rules="priceRules"
           @save-draft="onSaveDraft"
           @publish="(payload) => onPublish(payload.ruleSetId)"
           @save-mapping="onSaveMapping"
+          @save-settings="onSaveSettings"
         />
         <RulePublishPanel
           :rule-set-id="selectedRuleSetId"
