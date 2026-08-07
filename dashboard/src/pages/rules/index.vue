@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import { ElButton, ElMessage } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import RuleEditor, {
+  type MappingRow,
   type RuleDraftPayload
 } from "@/features/rule-editor/RuleEditor.vue"
 import RulePublishPanel from "@/features/rule-publish/RulePublishPanel.vue"
@@ -14,6 +15,10 @@ import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
 
 const ruleStore = useRuleStore()
 const deliveryConfigStore = useDeliveryConfigStore()
+
+const mappingProposal = computed(
+  () => deliveryConfigStore.mappingProposal as unknown as MappingRow[]
+)
 
 const CATEGORIES = [
   { key: "link", label: "链接规则" },
@@ -139,6 +144,15 @@ async function onPublish(ruleSetId: string) {
   ElMessage.success(`已发布版本 v${version.version}`)
   await Promise.all([ruleStore.fetchRules(), loadVersions()])
 }
+
+async function onSaveMapping(rows: MappingRow[]) {
+  const result = await deliveryConfigStore.saveMappingProposal(rows)
+  if (deliveryConfigStore.error || !result) {
+    ElMessage.error(deliveryConfigStore.error ?? "保存映射失败")
+    return
+  }
+  ElMessage.success(`CID 映射已保存，共 ${result.count} 条`)
+}
 </script>
 
 <template>
@@ -177,11 +191,13 @@ async function onPublish(ruleSetId: string) {
           :cids="deliveryConfigStore.cids"
           :ad-presets="deliveryConfigStore.adPresets"
           :open-presets="deliveryConfigStore.openPresets"
-          :mapping-proposal="deliveryConfigStore.mappingProposal"
+          :mapping-proposal="mappingProposal"
           :delivery-loading="deliveryConfigStore.loading"
+          :saving="deliveryConfigStore.saving"
           v-model:price-rules="priceRules"
           @save-draft="onSaveDraft"
           @publish="(payload) => onPublish(payload.ruleSetId)"
+          @save-mapping="onSaveMapping"
         />
         <RulePublishPanel
           :rule-set-id="selectedRuleSetId"

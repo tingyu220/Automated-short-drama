@@ -50,3 +50,15 @@ def test_service_raises_when_snapshot_missing(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         service.summary()
+
+
+def test_save_mapping_proposal_overrides_snapshot(tmp_path):
+    _write_snapshot(tmp_path)
+    service = DeliveryConfigSnapshotService(extracted_dir=tmp_path)
+    row = service.mapping_proposal()[0]
+    row["ad_preset"] = "手动广告预设"
+
+    saved = service.save_mapping_proposal([row])
+
+    assert saved["count"] == 1
+    assert service.mapping_proposal()[0]["ad_preset"] == "手动广告预设"

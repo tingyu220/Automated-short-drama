@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from backend.application.services.delivery_config_service import (
     DeliveryConfigSnapshotService,
@@ -13,6 +14,12 @@ _service = DeliveryConfigSnapshotService()
 
 def _guard(exc: FileNotFoundError) -> HTTPException:
     return HTTPException(status_code=404, detail=str(exc))
+
+
+class MappingProposalBody(BaseModel):
+    """用户编辑后的 CID 映射列表。"""
+
+    rows: list[dict]
 
 
 @router.get("/config/delivery/summary")
@@ -75,3 +82,18 @@ def delivery_config_mapping_proposal() -> dict:
         return {"rows": rows, "count": len(rows)}
     except FileNotFoundError as exc:
         raise _guard(exc) from exc
+
+
+@router.put("/config/delivery/mapping-proposal")
+def save_delivery_mapping_proposal(body: MappingProposalBody) -> dict:
+    """保存面板编辑后的 CID 映射，覆盖自动同步默认值。"""
+    try:
+        payload = _service.save_mapping_proposal(body.rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise _guard(exc) from exc
+    return {
+        "saved_at": payload.get("saved_at"),
+        "count": len(payload.get("rows", [])),
+    }

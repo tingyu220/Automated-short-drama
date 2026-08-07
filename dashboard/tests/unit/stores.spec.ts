@@ -432,4 +432,31 @@ describe("useDeliveryConfigStore", () => {
     expect(fetchMock).toHaveBeenCalledTimes(7)
     expect(store.error).toBeNull()
   })
+
+  it("saveMappingProposal 保存编辑并重新拉取", async () => {
+    const fetchMock = stubFetch()
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        return okJson({ saved_at: "2026-08-07T00:00:00+00:00", count: 2 })
+      }
+      if (url.includes("/config/delivery/summary")) {
+        return okJson({
+          counts: { cid: 1, ad_presets: 1, open_presets: 1 },
+          extracted_at: "2026-08-07T00:00:00+00:00",
+          mapping_proposal_count: 1
+        })
+      }
+      return okJson({ rows: [], count: 0 })
+    })
+
+    const store = useDeliveryConfigStore()
+    const result = await store.saveMappingProposal([{ cid: "c1" }])
+
+    expect(result?.count).toBe(2)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/config/delivery/mapping-proposal",
+      expect.objectContaining({ method: "PUT" })
+    )
+    expect(store.error).toBeNull()
+  })
 })

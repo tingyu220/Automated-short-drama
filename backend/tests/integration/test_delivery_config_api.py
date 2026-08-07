@@ -60,3 +60,22 @@ def test_delivery_config_missing_snapshot_returns_404(tmp_path, monkeypatch):
 
     assert response.status_code == 404
     assert "采集脚本" in response.json()["detail"]
+
+
+def test_put_mapping_proposal_saves_and_merges(tmp_path, monkeypatch):
+    _write_snapshot(tmp_path)
+    service = DeliveryConfigSnapshotService(extracted_dir=tmp_path)
+    monkeypatch.setattr(delivery_route, "_service", service)
+    client = TestClient(create_app(dist_dir=None))
+    row = service.mapping_proposal()[0]
+    row["ad_preset"] = "手动广告预设"
+
+    saved = client.put(
+        "/api/config/delivery/mapping-proposal",
+        json={"rows": [row]},
+    )
+    fetched = client.get("/api/config/delivery/mapping-proposal")
+
+    assert saved.status_code == 200
+    assert saved.json()["count"] == 1
+    assert fetched.json()["rows"][0]["ad_preset"] == "手动广告预设"

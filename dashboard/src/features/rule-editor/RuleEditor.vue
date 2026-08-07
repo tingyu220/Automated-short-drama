@@ -34,6 +34,20 @@ interface MaterialRuleRow {
   targetProjectCount: number
 }
 
+export interface MappingRow {
+  [key: string]: unknown
+  cid: string
+  group: string
+  company: string
+  pay_type: string | null
+  account_count: number
+  ad_preset: string
+  open_preset: string
+  douyin_account: string
+  ad_preset_candidates?: string[]
+  open_preset_candidates?: string[]
+}
+
 const props = defineProps<{
   category: string
   ruleSets: RuleSet[]
@@ -43,14 +57,16 @@ const props = defineProps<{
   adPresets?: Record<string, unknown>[]
   openPresets?: Record<string, unknown>[]
   accounts?: Record<string, unknown>[]
-  mappingProposal?: Record<string, unknown>[]
+  mappingProposal?: MappingRow[]
   deliveryLoading?: boolean
+  saving?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: "update:priceRules", rules: PriceRuleInput[]): void
   (e: "saveDraft", payload: RuleDraftPayload): void
   (e: "publish", payload: RulePublishPayload): void
+  (e: "saveMapping", rows: MappingRow[]): void
 }>()
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -174,6 +190,16 @@ const materialRows = ref<MaterialRuleRow[]>([
   }
 ])
 
+const mappingDraft = ref<MappingRow[]>([])
+
+watch(
+  () => props.mappingProposal,
+  (rows) => {
+    mappingDraft.value = (rows ?? []).map((row) => ({ ...row }))
+  },
+  { immediate: true }
+)
+
 const categoryLabel = computed(
   () => CATEGORY_LABEL[props.category] ?? props.category
 )
@@ -201,6 +227,10 @@ function draftData(): Record<string, unknown> {
 
 function joinCandidates(value: unknown): string {
   return Array.isArray(value) ? (value as string[]).join("；") : String(value ?? "")
+}
+
+function saveMapping() {
+  emit("saveMapping", mappingDraft.value)
 }
 
 function saveDraft() {
@@ -398,8 +428,16 @@ function publish() {
 
     <template v-else-if="isCid">
       <div class="rule-editor__sync-line">
-        <span>已同步 CID 组 {{ mappingProposal?.length ?? 0 }} 个</span>
+        <span>已同步 CID 组 {{ mappingDraft.length }} 个</span>
         <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+        <ElButton
+          type="primary"
+          size="small"
+          :loading="saving"
+          @click="saveMapping"
+        >
+          保存修改
+        </ElButton>
       </div>
       <div class="rule-editor__scroll">
         <table class="rule-editor__table">
@@ -415,17 +453,20 @@ function publish() {
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="row in mappingProposal ?? []"
-              :key="String(row.cid)"
-            >
+            <tr v-for="row in mappingDraft" :key="row.cid">
               <td>{{ row.cid }}</td>
               <td>{{ row.group }}</td>
               <td>{{ row.company }}</td>
               <td>{{ row.account_count }}</td>
-              <td>{{ row.ad_preset }}</td>
-              <td>{{ row.open_preset }}</td>
-              <td>{{ row.douyin_account || "待配置" }}</td>
+              <td>
+                <ElInput v-model="row.ad_preset" />
+              </td>
+              <td>
+                <ElInput v-model="row.open_preset" />
+              </td>
+              <td>
+                <ElInput v-model="row.douyin_account" />
+              </td>
             </tr>
           </tbody>
         </table>
@@ -669,6 +710,10 @@ function publish() {
 
 .rule-editor__table :deep(.el-select) {
   width: 150px;
+}
+
+.rule-editor__table :deep(.el-input) {
+  width: 220px;
 }
 
 .rule-editor__reserved {

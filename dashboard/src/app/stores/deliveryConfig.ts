@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { ref } from "vue"
-import { apiGet } from "@/shared/api/http-client"
+import { apiGet, apiPut } from "@/shared/api/http-client"
 import { toErrorMessage } from "@/shared/api/error-handler"
 
 interface DeliverySummary {
@@ -24,6 +24,7 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
   const accounts = ref<Record<string, unknown>[]>([])
   const mappingProposal = ref<Record<string, unknown>[]>([])
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function loadForCategory(category: string) {
@@ -75,6 +76,24 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
     }
   }
 
+  async function saveMappingProposal(rows: Record<string, unknown>[]) {
+    saving.value = true
+    error.value = null
+    try {
+      const result = await apiPut<{ saved_at: string; count: number }>(
+        "/config/delivery/mapping-proposal",
+        { rows }
+      )
+      await loadForCategory("cid")
+      return result
+    } catch (err) {
+      error.value = toErrorMessage(err)
+      return null
+    } finally {
+      saving.value = false
+    }
+  }
+
   return {
     summary,
     cids,
@@ -84,7 +103,9 @@ export const useDeliveryConfigStore = defineStore("deliveryConfig", () => {
     accounts,
     mappingProposal,
     loading,
+    saving,
     error,
-    loadForCategory
+    loadForCategory,
+    saveMappingProposal
   }
 })
