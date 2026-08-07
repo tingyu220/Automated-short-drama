@@ -9,6 +9,7 @@ import EmptyState from "@/shared/ui/EmptyState.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
 import { useExceptionStore } from "@/app/stores/exception"
 import { useQueueStore } from "@/app/stores/queue"
+import { useSessionStore } from "@/app/stores/session"
 import { useSystemStore } from "@/app/stores/system"
 import { useTaskStore } from "@/app/stores/task"
 import {
@@ -21,6 +22,7 @@ const taskStore = useTaskStore()
 const queueStore = useQueueStore()
 const exceptionStore = useExceptionStore()
 const systemStore = useSystemStore()
+const sessionStore = useSessionStore()
 const router = useRouter()
 
 function today(): string {
@@ -33,7 +35,8 @@ async function load() {
   await Promise.all([
     taskStore.fetchTasks({ date: today() }),
     queueStore.fetchQueue(),
-    exceptionStore.fetchExceptions()
+    exceptionStore.fetchExceptions(),
+    sessionStore.fetchSessions()
   ])
 }
 
@@ -78,21 +81,29 @@ function exceptionColor(level: string): string {
   return "var(--color-status-pending)"
 }
 
-const resourceStatuses = computed(() => [
-  {
-    label: "Automation Worker",
-    value: systemStore.workerHeartbeat === "ok" ? "在线" : "离线",
-    online: systemStore.workerHeartbeat === "ok"
-  },
-  { label: "番茄 Session", value: "未检测", online: false },
-  { label: "投放系统 Session", value: "未检测", online: false },
-  { label: "巨量 Session", value: "未检测", online: false },
-  {
-    label: "飞书连接",
-    value: systemStore.database === "ok" ? "正常" : "异常",
-    online: systemStore.database === "ok"
+const resourceStatuses = computed(() => {
+  const workerOnline = systemStore.workerHeartbeat === "ok"
+  const platformStatus = (key: string, label: string) => {
+    const session = sessionStore.sessions[key]
+    const online = session?.status === "logged_in"
+    return {
+      label,
+      value: online ? "已登录" : "未登录",
+      online
+    }
   }
-])
+  return [
+    {
+      label: "Automation Worker",
+      value: workerOnline ? "在线" : "离线",
+      online: workerOnline
+    },
+    platformStatus("feishu", "飞书"),
+    platformStatus("tomato", "番茄"),
+    platformStatus("delivery", "投放系统"),
+    platformStatus("ocean", "巨量")
+  ]
+})
 </script>
 
 <template>
