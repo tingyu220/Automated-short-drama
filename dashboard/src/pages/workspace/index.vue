@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue"
+import { useRouter } from "vue-router"
 import { ElButton } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import CurrentTaskPanel from "@/widgets/current-task/CurrentTaskPanel.vue"
@@ -20,6 +21,7 @@ const taskStore = useTaskStore()
 const queueStore = useQueueStore()
 const exceptionStore = useExceptionStore()
 const systemStore = useSystemStore()
+const router = useRouter()
 
 function today(): string {
   const now = new Date()
@@ -126,6 +128,13 @@ const resourceStatuses = computed(() => [
         <section class="workspace-panel">
           <header class="workspace-panel__header">
             <h2 class="workspace-panel__title">即将到时间</h2>
+            <button
+              type="button"
+              class="workspace-panel__more"
+              @click="router.push('/tasks')"
+            >
+              查看全部
+            </button>
           </header>
           <EmptyState
             v-if="upcomingTasks.length === 0"
@@ -151,7 +160,16 @@ const resourceStatuses = computed(() => [
         <section class="workspace-panel">
           <header class="workspace-panel__header">
             <h2 class="workspace-panel__title">异常提醒</h2>
-            <span class="workspace-panel__count">{{ exceptionStore.exceptions.length }}</span>
+            <span class="workspace-panel__count">
+              {{ exceptionStore.exceptions.length }}
+            </span>
+            <button
+              type="button"
+              class="workspace-panel__more"
+              @click="router.push('/exceptions')"
+            >
+              查看全部
+            </button>
           </header>
           <EmptyState
             v-if="exceptionRows.length === 0"
@@ -260,11 +278,26 @@ const resourceStatuses = computed(() => [
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
+  margin-left: auto;
+  margin-right: 8px;
   color: var(--color-status-warning);
   background: color-mix(in srgb, var(--color-status-warning) 12%, transparent);
   border-radius: 999px;
   font-size: var(--font-size-caption);
   font-weight: 600;
+}
+
+.workspace-panel__more {
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.workspace-panel__more:hover {
+  text-decoration: underline;
 }
 
 .workspace-panel__list {

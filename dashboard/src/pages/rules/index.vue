@@ -7,6 +7,7 @@ import RuleEditor, {
 } from "@/features/rule-editor/RuleEditor.vue"
 import RulePublishPanel from "@/features/rule-publish/RulePublishPanel.vue"
 import RuleSimulator from "@/widgets/rule-simulator/RuleSimulator.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
 import { useRuleStore } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
 
@@ -135,16 +136,17 @@ async function onPublish(ruleSetId: string) {
 
 <template>
   <div class="rules-page">
-    <header class="rules-page__header">
-      <div>
-        <h1 class="rules-page__title">规则与配置</h1>
-        <p class="rules-page__subtitle">规则草稿、校验、发布与实时模拟</p>
-      </div>
-      <ElButton :loading="ruleStore.loading" @click="load">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </ElButton>
-    </header>
+    <PageHeader
+      title="规则与配置"
+      subtitle="规则草稿、校验、发布与实时模拟"
+    >
+      <template #actions>
+        <ElButton :loading="ruleStore.loading" @click="load">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </ElButton>
+      </template>
+    </PageHeader>
 
     <div class="rules-page__layout">
       <aside class="rules-nav" aria-label="规则分类">

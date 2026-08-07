@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue"
+import { computed, onMounted, ref } from "vue"
 import { ElButton } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import ErrorState from "@/shared/ui/ErrorState.vue"
 import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
+import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
 import ArtifactViewer from "@/widgets/artifact-viewer/ArtifactViewer.vue"
 import { useRecordsStore } from "@/app/stores/records"
@@ -39,6 +41,23 @@ const cleanupItems = computed(() =>
   )
 )
 
+const page = ref(1)
+const pageSize = ref(10)
+
+const pagedLedgers = computed(() =>
+  recordsStore.ledgers.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
+
+const pagedEvents = computed(() =>
+  recordsStore.events.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
+
 async function load() {
   await recordsStore.fetchRecords()
 }
@@ -55,18 +74,17 @@ function levelColor(level: string): string {
 
 <template>
   <div class="records-page">
-    <header class="records-page__header">
-      <div>
-        <h1 class="records-page__title">系统记录</h1>
-        <p class="records-page__subtitle">
-          业务台账、工作流运行、操作审计、配置变更与执行产物
-        </p>
-      </div>
-      <ElButton :loading="recordsStore.loading" @click="load">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </ElButton>
-    </header>
+    <PageHeader
+      title="系统记录"
+      subtitle="业务台账、工作流运行、操作审计、配置变更与执行产物"
+    >
+      <template #actions>
+        <ElButton :loading="recordsStore.loading" @click="load">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </ElButton>
+      </template>
+    </PageHeader>
 
     <ErrorState
       v-if="recordsStore.error"
@@ -113,7 +131,7 @@ function levelColor(level: string): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="ledger in recordsStore.ledgers" :key="ledger.id">
+                <tr v-for="ledger in pagedLedgers" :key="ledger.id">
                   <td class="records-page__strong">{{ ledger.dramaName }}</td>
                   <td>{{ ledger.feishuRow }}</td>
                   <td class="records-page__mono">{{ ledger.albumId }}</td>
@@ -136,6 +154,11 @@ function levelColor(level: string): string {
                 </tr>
               </tbody>
             </table>
+            <PaginationBar
+              v-model:page="page"
+              v-model:page-size="pageSize"
+              :total="recordsStore.ledgers.length"
+            />
           </div>
 
           <div
@@ -159,7 +182,7 @@ function levelColor(level: string): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="event in recordsStore.events" :key="event.id">
+                <tr v-for="event in pagedEvents" :key="event.id">
                   <td>{{ formatDateTime(event.occurred_at) }}</td>
                   <td class="records-page__mono">{{ event.task_id }}</td>
                   <td v-if="tab.key === 'steps'">
@@ -182,6 +205,11 @@ function levelColor(level: string): string {
                 </tr>
               </tbody>
             </table>
+            <PaginationBar
+              v-model:page="page"
+              v-model:page-size="pageSize"
+              :total="recordsStore.events.length"
+            />
           </div>
 
           <div v-else-if="tab.key === 'artifacts'">

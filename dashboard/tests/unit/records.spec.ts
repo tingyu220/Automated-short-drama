@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { setActivePinia, createPinia } from "pinia"
 import { mount, flushPromises } from "@vue/test-utils"
+import { createMemoryHistory, createRouter } from "vue-router"
 import { ElTabs, ElTabPane } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import RecordsPage from "@/pages/records/index.vue"
@@ -11,7 +12,13 @@ function okJson(payload: unknown): Response {
 }
 
 const TEST_GLOBAL = {
-  components: { ElTabs, ElTabPane, ElIcon: Refresh }
+  components: { ElTabs, ElTabPane, ElIcon: Refresh },
+  plugins: [
+    createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", component: { template: "<div />" } }]
+    })
+  ]
 }
 
 function stubFetch(payloads: Record<string, unknown>): ReturnType<typeof vi.fn> {

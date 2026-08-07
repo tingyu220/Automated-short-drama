@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from "vue"
 import { ElButton, ElMessage } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import ConfirmActionDialog from "@/shared/ui/ConfirmActionDialog.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
+import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import QueueMonitor, {
   type QueueAction,
   type QueueWorkerStatus
@@ -25,6 +27,8 @@ const WORKER_ID = "ui-worker"
 
 const confirmVisible = ref(false)
 const pendingAction = ref<{ item: QueueItem; action: QueueAction } | null>(null)
+const page = ref(1)
+const pageSize = ref(10)
 
 const RISK_TEXT: Record<
   "release_lock" | "force_stop" | "requeue" | "cancel",
@@ -102,6 +106,13 @@ const workerStatus = computed<QueueWorkerStatus>(() => {
   }
 })
 
+const pagedItems = computed(() =>
+  queueStore.items.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
+
 function handleAction(payload: { item: QueueItem; action: QueueAction }) {
   if (payload.action === "pause" || payload.action === "resume") {
     void runAction(payload)
@@ -165,25 +176,32 @@ const confirmContent = computed(() => {
 
 <template>
   <div class="queue-page">
-    <header class="queue-page__header">
-      <div>
-        <h1 class="queue-page__title">自动化队列</h1>
-        <p class="queue-page__subtitle">Worker 锁、租约与任务执行顺序</p>
-      </div>
-      <ElButton :loading="queueStore.loading" @click="load">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </ElButton>
-    </header>
+    <PageHeader
+      title="自动化队列"
+      subtitle="Worker 锁、租约与任务执行顺序"
+    >
+      <template #actions>
+        <ElButton :loading="queueStore.loading" @click="load">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </ElButton>
+      </template>
+    </PageHeader>
 
     <QueueMonitor
-      :items="queueStore.items"
+      :items="pagedItems"
       :tasks="taskStore.tasks"
       :loading="queueStore.loading"
       :error="queueStore.error"
       :worker="workerStatus"
       @action="handleAction"
       @retry="load"
+    />
+
+    <PaginationBar
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="queueStore.items.length"
     />
 
     <ConfirmActionDialog

@@ -15,6 +15,8 @@ import {
   Upload
 } from "@element-plus/icons-vue"
 import ConfirmActionDialog from "@/shared/ui/ConfirmActionDialog.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
+import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import TaskDetailDrawer from "@/features/task-detail/TaskDetailDrawer.vue"
 import TaskTable from "@/widgets/task-table/TaskTable.vue"
 import { useQueueStore } from "@/app/stores/queue"
@@ -66,6 +68,8 @@ const platform = ref("")
 const status = ref("")
 const stage = ref("")
 const exceptionFilter = ref("")
+const page = ref(1)
+const pageSize = ref(10)
 
 const drawerOpen = ref(false)
 const confirmVisible = ref(false)
@@ -131,6 +135,13 @@ const filteredTasks = computed(() => {
       return true
     })
 })
+
+const pagedTasks = computed(() =>
+  filteredTasks.value.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
 
 async function loadAll() {
   await Promise.all([
@@ -256,12 +267,10 @@ function exportTasks() {
 
 <template>
   <div class="tasks-page">
-    <header class="tasks-page__header">
-      <div>
-        <h1 class="tasks-page__title">今日任务</h1>
-        <p class="tasks-page__subtitle">当天从飞书同步的剧目投放任务</p>
-      </div>
-    </header>
+    <PageHeader
+      title="今日任务"
+      subtitle="当天从飞书同步的剧目投放任务"
+    />
 
     <section class="tasks-filter" aria-label="任务筛选">
       <ElDatePicker
@@ -352,13 +361,19 @@ function exportTasks() {
     </section>
 
     <TaskTable
-      :rows="filteredTasks"
+      :rows="pagedTasks"
       :loading="taskStore.loading"
       :error="taskStore.error"
       @view="openTask"
       @continue="continueTask"
       @command="handleCommand"
       @retry="loadAll"
+    />
+
+    <PaginationBar
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="filteredTasks.length"
     />
 
     <TaskDetailDrawer

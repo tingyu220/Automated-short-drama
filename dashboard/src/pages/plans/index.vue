@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue"
+import { computed, onMounted, ref } from "vue"
 import { ElButton, ElDrawer } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import ErrorState from "@/shared/ui/ErrorState.vue"
 import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
+import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
 import PlanSpecPreview from "@/widgets/plan-preview/PlanSpecPreview.vue"
 import { getPlanStatusMeta } from "@/widgets/plan-preview/plan-status"
@@ -15,6 +17,15 @@ const planStore = usePlanStore()
 
 const drawerOpen = ref(false)
 const selectedPlan = ref<PlanView | null>(null)
+const page = ref(1)
+const pageSize = ref(10)
+
+const pagedPlans = computed(() =>
+  planStore.plans.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
 
 async function load() {
   await planStore.fetchPlans()
@@ -30,16 +41,17 @@ function openPlan(plan: PlanView) {
 
 <template>
   <div class="plans-page">
-    <header class="plans-page__header">
-      <div>
-        <h1 class="plans-page__title">计划管理</h1>
-        <p class="plans-page__subtitle">PlanSpec、校验结果、素材分组与提交状态</p>
-      </div>
-      <ElButton :loading="planStore.loading" @click="load">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </ElButton>
-    </header>
+    <PageHeader
+      title="计划管理"
+      subtitle="PlanSpec、校验结果、素材分组与提交状态"
+    >
+      <template #actions>
+        <ElButton :loading="planStore.loading" @click="load">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </ElButton>
+      </template>
+    </PageHeader>
 
     <ErrorState
       v-if="planStore.error"
@@ -75,7 +87,7 @@ function openPlan(plan: PlanView) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="plan in planStore.plans" :key="plan.id">
+          <tr v-for="plan in pagedPlans" :key="plan.id">
             <td class="plans-page__name">{{ plan.taskName }}</td>
             <td class="plans-page__drama">{{ plan.dramaName }}</td>
             <td>{{ plan.planType }}</td>
@@ -110,6 +122,11 @@ function openPlan(plan: PlanView) {
           </tr>
         </tbody>
       </table>
+      <PaginationBar
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="planStore.plans.length"
+      />
     </div>
 
     <ElDrawer

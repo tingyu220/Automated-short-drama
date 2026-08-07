@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { onMounted } from "vue"
+import { computed, onMounted, ref } from "vue"
 import { ElButton, ElMessage } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import ExceptionPanel, {
   type ExceptionAction
 } from "@/features/exception-resolution/ExceptionPanel.vue"
+import PageHeader from "@/shared/ui/PageHeader.vue"
+import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import { useExceptionStore, type ExceptionItem } from "@/app/stores/exception"
 import { useRouter } from "vue-router"
 
 const exceptionStore = useExceptionStore()
 const router = useRouter()
+const page = ref(1)
+const pageSize = ref(10)
+
+const pagedExceptions = computed(() =>
+  exceptionStore.exceptions.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value
+  )
+)
 
 async function load() {
   await exceptionStore.fetchExceptions()
@@ -28,25 +39,30 @@ function handleAction(payload: { item: ExceptionItem; action: ExceptionAction })
 
 <template>
   <div class="exceptions-page">
-    <header class="exceptions-page__header">
-      <div>
-        <h1 class="exceptions-page__title">异常中心</h1>
-        <p class="exceptions-page__subtitle">
-          登录失效、配置缺失、页面变化、结果不确定与部分写入
-        </p>
-      </div>
-      <ElButton :loading="exceptionStore.loading" @click="load">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </ElButton>
-    </header>
+    <PageHeader
+      title="异常中心"
+      subtitle="登录失效、配置缺失、页面变化、结果不确定与部分写入"
+    >
+      <template #actions>
+        <ElButton :loading="exceptionStore.loading" @click="load">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </ElButton>
+      </template>
+    </PageHeader>
 
     <ExceptionPanel
-      :items="exceptionStore.exceptions"
+      :items="pagedExceptions"
       :loading="exceptionStore.loading"
       :error="exceptionStore.error"
       @retry="load"
       @action="handleAction"
+    />
+
+    <PaginationBar
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="exceptionStore.exceptions.length"
     />
   </div>
 </template>
