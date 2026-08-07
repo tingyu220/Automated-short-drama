@@ -10,18 +10,13 @@ const plan: PlanView = {
   platform: "番茄",
   status: "COMPLETED",
   completedAt: "2026-08-06T10:00:00",
+  feishuRow: "12",
+  albumId: "A-1001",
+  productId: "P-2001",
   taskName: "番茄#端免测试剧20260806-100000-1",
-  planType: "标准投放",
-  accountCount: "10",
-  cidCount: "3",
-  materialCount: "12",
-  materialGroupCount: "6",
-  expectedProjectCount: "3",
   ruleVersion: "3",
-  validationStatus: "VALIDATED",
-  submitStatus: "SUBMITTED",
-  externalTaskId: "EXT-1001",
-  createdAt: "2026-08-06T09:00:00"
+  configVersion: "7",
+  externalTaskId: "EXT-1001"
 }
 
 describe("PlanSpecPreview", () => {
@@ -38,10 +33,11 @@ describe("PlanSpecPreview", () => {
     })
     expect(wrapper.text()).toContain("测试剧")
     expect(wrapper.text()).toContain("番茄#端免测试剧20260806-100000-1")
-    expect(wrapper.text()).toContain("标准投放")
+    expect(wrapper.text()).toContain("A-1001")
+    expect(wrapper.text()).toContain("P-2001")
     expect(wrapper.text()).toContain("EXT-1001")
     expect(wrapper.text()).toContain("已完成")
-    expect(wrapper.text()).toContain("10")
+    expect(wrapper.text()).toContain("7")
   })
 
   it("切换查看原始数据", async () => {

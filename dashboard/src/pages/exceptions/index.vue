@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
-import { ElButton, ElMessage } from "element-plus"
+import { ElButton } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import ExceptionPanel, {
   type ExceptionAction
@@ -31,9 +31,7 @@ onMounted(load)
 function handleAction(payload: { item: ExceptionItem; action: ExceptionAction }) {
   if (payload.action === "modify_config") {
     void router.push("/rules")
-    return
   }
-  ElMessage.info("该操作 V1 待接入后端")
 }
 </script>
 

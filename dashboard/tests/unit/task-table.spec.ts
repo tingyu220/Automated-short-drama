@@ -53,7 +53,6 @@ describe("TaskTable", () => {
     })
     expect(wrapper.text()).toContain("测试剧")
     expect(wrapper.text()).toContain("番茄")
-    expect(wrapper.text()).toContain("A-1001")
 
     const buttons = wrapper.findAll(".task-table__action-button")
     await buttons[0].trigger("click")

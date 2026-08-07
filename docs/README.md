@@ -9,3 +9,4 @@
 - [全流程](workflows/full-workflow.md)：端到端流程与异常分支。
 - [业务规则](rules/business-rules.md)：链接、账户、素材、计划与完成规则。
 - [现有代码资产清单](current-code-inventory.md)：现有代码资产盘点与 Adapter 映射。
+- [前端展示逻辑甲方审查报告](frontend-display-audit.md)：甲方视角的前端展示可信度、契约与占位问题清单。

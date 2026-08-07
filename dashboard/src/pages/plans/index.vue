@@ -12,6 +12,7 @@ import PlanSpecPreview from "@/widgets/plan-preview/PlanSpecPreview.vue"
 import { getPlanStatusMeta } from "@/widgets/plan-preview/plan-status"
 import { usePlanStore, type PlanView } from "@/app/stores/plan"
 import { formatDateTime } from "@/entities/task/types"
+import { getPlatformLabel } from "@/shared/utils/status"
 
 const planStore = usePlanStore()
 
@@ -71,18 +72,12 @@ function openPlan(plan: PlanView) {
           <tr>
             <th>任务名称</th>
             <th>剧名</th>
-            <th>计划类型</th>
-            <th>账户数</th>
-            <th>CID数</th>
-            <th>素材数</th>
-            <th>素材组数</th>
-            <th>预计项目数</th>
+            <th>平台</th>
             <th>规则版本</th>
-            <th>校验状态</th>
-            <th>提交状态</th>
+            <th>配置版本</th>
             <th>计划状态</th>
             <th>外部任务ID</th>
-            <th>创建时间</th>
+            <th>完成时间</th>
             <th class="plans-page__operations-head">操作</th>
           </tr>
         </thead>
@@ -90,15 +85,9 @@ function openPlan(plan: PlanView) {
           <tr v-for="plan in pagedPlans" :key="plan.id">
             <td class="plans-page__name">{{ plan.taskName }}</td>
             <td class="plans-page__drama">{{ plan.dramaName }}</td>
-            <td>{{ plan.planType }}</td>
-            <td>{{ plan.accountCount }}</td>
-            <td>{{ plan.cidCount }}</td>
-            <td>{{ plan.materialCount }}</td>
-            <td>{{ plan.materialGroupCount }}</td>
-            <td>{{ plan.expectedProjectCount }}</td>
+            <td>{{ getPlatformLabel(plan.platform) }}</td>
             <td>{{ plan.ruleVersion }}</td>
-            <td>{{ plan.validationStatus }}</td>
-            <td>{{ plan.submitStatus }}</td>
+            <td>{{ plan.configVersion }}</td>
             <td>
               <span class="plans-page__status">
                 <StatusDot
@@ -109,7 +98,7 @@ function openPlan(plan: PlanView) {
               </span>
             </td>
             <td class="plans-page__mono">{{ plan.externalTaskId }}</td>
-            <td>{{ formatDateTime(plan.createdAt) }}</td>
+            <td>{{ formatDateTime(plan.completedAt) }}</td>
             <td class="plans-page__operations">
               <button
                 type="button"
@@ -131,7 +120,7 @@ function openPlan(plan: PlanView) {
 
     <ElDrawer
       v-model="drawerOpen"
-      title="PlanSpec 预览"
+      title="台账详情"
       size="720px"
       destroy-on-close
     >
@@ -177,7 +166,7 @@ function openPlan(plan: PlanView) {
 
 .plans-page__table {
   width: 100%;
-  min-width: 1440px;
+  min-width: 1000px;
   border-collapse: collapse;
   background: var(--color-bg-panel);
   border: 1px solid #e5e7eb;

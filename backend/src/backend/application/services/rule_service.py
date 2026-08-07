@@ -279,6 +279,106 @@ def simulate_price(
     return SimulationResult(inputs=list(candidates), outputs=outputs)
 
 
+def apply_published_payload(
+    price_repo: PriceRuleRepository,
+    material_repo: MaterialRuleRepository,
+    payload: dict[str, Any],
+) -> None:
+    """把已发布草稿参数写入价格/素材规则表，供 Worker 执行使用。"""
+    price_items = payload.get("price_rules") or payload.get(
+        "template_price_rules"
+    )
+    if isinstance(price_items, list):
+        _upsert_price_items(price_repo, price_items)
+    elif _looks_like_price_item(payload):
+        _upsert_price_items(price_repo, [payload])
+
+    ranges = payload.get("ranges") or payload.get("material_ranges")
+    if isinstance(ranges, list):
+        normalized: list[MaterialRuleRange] = []
+        for item in ranges:
+            if not isinstance(item, dict):
+                continue
+            minimum = _pick(item, "min", "min_material_count")
+            maximum = _pick(item, "max", "max_material_count")
+            if minimum is None or not isinstance(minimum, int):
+                continue
+            normalized.append(
+                MaterialRuleRange(
+                    key=str(_pick(item, "key", "id") or ""),
+                    min_material_count=minimum,
+                    max_material_count=(
+                        int(maximum) if maximum is not None else None
+                    ),
+                    strategy=str(_pick(item, "strategy") or ""),
+                    base_group_count=int(
+                        _pick(item, "baseGroupCount", "base_group_count") or 1
+                    ),
+                    copy_count=int(
+                        _pick(item, "copyCount", "copy_count") or 0
+                    ),
+                    group_size_cap=int(
+                        _pick(item, "groupSizeCap", "group_size_cap") or 30
+                    ),
+                    target_project_count=int(
+                        _pick(item, "targetProjectCount", "target_project_count")
+                        or 1
+                    ),
+                )
+            )
+        material_repo.replace_material_rule_ranges(normalized)
+
+
+def _looks_like_price_item(payload: dict[str, Any]) -> bool:
+    """判断草稿对象本身是否为单个价格规则项。"""
+    target = _pick(payload, "target_price", "targetPrice")
+    minimum = _pick(payload, "min_price", "minPrice")
+    maximum = _pick(payload, "max_price", "maxPrice")
+    return (
+        target is not None
+        and minimum is not None
+        and maximum is not None
+    )
+
+
+def _upsert_price_items(
+    price_repo: PriceRuleRepository,
+    items: list[dict[str, Any]],
+) -> None:
+    """按草稿项覆盖价格规则表。"""
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = str(_pick(item, "key", "id") or "")
+        if not key:
+            continue
+        price_repo.upsert_template_price_rule(
+            TemplatePriceRule(
+                key=key,
+                target_price=float(
+                    _pick(item, "targetPrice", "target_price") or 0
+                ),
+                min_price=float(
+                    _pick(item, "minPrice", "min_price") or 0
+                ),
+                max_price=float(
+                    _pick(item, "maxPrice", "max_price") or 0
+                ),
+                same_distance_strategy=str(
+                    _pick(
+                        item,
+                        "sameDistanceStrategy",
+                        "same_distance_strategy",
+                        "HIGHER_PRICE_FIRST",
+                    )
+                ),
+                enabled=bool(
+                    _pick(item, "enabled", "is_enabled") is not False
+                ),
+            )
+        )
+
+
 def publish_version(
     rule_repo: RuleRepository,
     rule_set_id: str,

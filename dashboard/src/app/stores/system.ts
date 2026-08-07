@@ -23,5 +23,22 @@ export const useSystemStore = defineStore("system", () => {
     }
   }
 
-  return { environment, allowFinalSubmit, workerHeartbeat, database, config, fetchHealth }
+  function isWorkerOnline(): boolean {
+    return (
+      workerHeartbeat.value === true ||
+      workerHeartbeat.value === "ok" ||
+      workerHeartbeat.value === "online" ||
+      workerHeartbeat.value === "1"
+    )
+  }
+
+  return {
+    environment,
+    allowFinalSubmit,
+    workerHeartbeat,
+    database,
+    config,
+    fetchHealth,
+    isWorkerOnline
+  }
 })

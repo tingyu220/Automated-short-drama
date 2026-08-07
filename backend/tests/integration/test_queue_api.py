@@ -122,6 +122,41 @@ class TestQueueApi:
         assert [item["id"] for item in queued_data] == [queued_id]
         assert queued_data[0]["task_id"] == task_id
 
+    def test_list_excludes_terminal_by_default(self, client, session_factory):
+        """默认不返回 COMPLETED/CANCELLED，include_terminal=true 时返回。"""
+        task_id = str(uuid.uuid4())
+        completed_id = str(uuid.uuid4())
+        cancelled_id = str(uuid.uuid4())
+        active_id = str(uuid.uuid4())
+        available_at = datetime(2026, 8, 6, 12, 0, 0)
+        with session_factory() as session:
+            _create_task(session, task_id)
+            for item_id, state in [
+                (completed_id, QueueState.COMPLETED),
+                (cancelled_id, QueueState.CANCELLED),
+                (active_id, QueueState.QUEUED),
+            ]:
+                _create_queue_item(
+                    session,
+                    item_id=item_id,
+                    task_id=task_id,
+                    state=state,
+                    available_at=available_at,
+                )
+            session.commit()
+
+        default_data = client.get("/api/queue").json()
+        assert [item["id"] for item in default_data] == [active_id]
+
+        all_data = client.get(
+            "/api/queue", params={"include_terminal": "true"}
+        ).json()
+        assert {item["id"] for item in all_data} == {
+            completed_id,
+            cancelled_id,
+            active_id,
+        }
+
     def test_pause_resume_flow(self, client, session_factory):
         """暂停后恢复，状态迁移正确。"""
         task_id = str(uuid.uuid4())

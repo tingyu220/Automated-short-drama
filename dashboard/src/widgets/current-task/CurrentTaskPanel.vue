@@ -80,7 +80,7 @@ const stageLabel = computed(() =>
           <dd>{{ task.platform }}</dd>
         </div>
         <div class="current-task__item">
-          <dt>当前阶段</dt>
+          <dt>队列状态</dt>
           <dd>{{ stageLabel }}</dd>
         </div>
         <div class="current-task__item">

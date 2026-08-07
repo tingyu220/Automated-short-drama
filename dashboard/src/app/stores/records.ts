@@ -54,5 +54,21 @@ export const useRecordsStore = defineStore("records", () => {
     }
   }
 
-  return { ledgers, events, artifacts, loading, error, fetchRecords }
+  async function fetchTaskEvents(
+    taskId: string
+  ): Promise<ExecutionEventView[]> {
+    return apiGet<ExecutionEventView[]>("/records/events", {
+      task_id: taskId
+    })
+  }
+
+  return {
+    ledgers,
+    events,
+    artifacts,
+    loading,
+    error,
+    fetchRecords,
+    fetchTaskEvents
+  }
 })

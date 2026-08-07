@@ -1,5 +1,18 @@
 /** 通用展示格式化：日期、文件大小、异常分类、台账字段。 */
 
+export function parseDateTimeUtc(value?: string | null): Date | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const hasTimezone =
+    /[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed)
+  const normalized = hasTimezone
+    ? trimmed
+    : `${trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T")}Z`
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 export type ExceptionCategoryKey =
   | "login_required"
   | "config_missing"
@@ -160,11 +173,36 @@ export function classifyException(
 }
 
 export function formatDateTime(value?: string | null): string {
-  if (!value) return "—"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
+  const date = parseDateTimeUtc(value)
+  if (!date) return value ?? "—"
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+export function formatDuration(
+  start?: string | null,
+  end?: string | null
+): string {
+  const startDate = parseDateTimeUtc(start)
+  if (!startDate) return "—"
+  const endDate = parseDateTimeUtc(end) ?? new Date()
+  const diff = Math.max(0, endDate.getTime() - startDate.getTime())
+  const minutes = Math.floor(diff / 60000)
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  if (minutes > 0) return `${minutes}m`
+  return `${Math.max(1, Math.floor(diff / 1000))}s`
+}
+
+export function formatRemainingTime(target?: string | null): string {
+  const targetDate = parseDateTimeUtc(target)
+  if (!targetDate) return "—"
+  const diff = targetDate.getTime() - Date.now()
+  if (diff <= 0) return "已到时间"
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 60) return `${minutes} 分钟`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时 ${minutes % 60} 分钟`
+  return `${Math.floor(hours / 24)} 天`
 }
 
 export function formatFileSize(bytes?: number | null): string {
@@ -180,6 +218,7 @@ export interface LedgerView {
   dramaName: string
   platform: string
   feishuRow: string
+  sheetRow: string
   albumId: string
   productId: string
   externalTaskId: string
@@ -206,6 +245,7 @@ export function formatLedgerRow(ledger: Record<string, unknown>): LedgerView {
     dramaName: text(ledger.drama_name),
     platform: text(ledger.platform),
     feishuRow: text(ledger.feishu_row ?? ledger.sheet_row),
+    sheetRow: text(ledger.sheet_row),
     albumId: text(ledger.album_id),
     productId: text(ledger.product_id),
     externalTaskId: text(ledger.external_task_id),

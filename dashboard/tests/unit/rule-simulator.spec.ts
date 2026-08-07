@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest"
+import { beforeEach, vi } from "vitest"
 import { mount } from "@vue/test-utils"
+import { setActivePinia, createPinia } from "pinia"
+import { flushPromises } from "@vue/test-utils"
 import RuleSimulator from "@/widgets/rule-simulator/RuleSimulator.vue"
 import {
   parseCandidates,
@@ -87,11 +90,35 @@ describe("parseCandidates", () => {
 })
 
 describe("RuleSimulator", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          inputs: [3],
+          outputs: [
+            {
+              candidate: 3,
+              matched_rule_key: "iap_2_9",
+              target_price: 2.9,
+              distance: 0.1,
+              selection_reason: "距离目标价最近"
+            }
+          ]
+        })
+      } as Response)
+    )
+    vi.stubGlobal("fetch", fetchMock)
+  })
+
   it("输入候选价格后渲染匹配结果", async () => {
     const wrapper = mount(RuleSimulator, {
       props: { rules: [rule29, rule99] }
     })
     await wrapper.find("input").setValue("3")
+    await flushPromises()
     expect(wrapper.text()).toContain("匹配")
     expect(wrapper.text()).toContain("IAP 2.9")
     expect(wrapper.text()).toContain("0.10")

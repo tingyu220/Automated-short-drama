@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { getStatusLabel, getStatusColor } from "@/shared/utils/status"
+import {
+  getStatusLabel,
+  getStatusColor,
+  getPlatformLabel
+} from "@/shared/utils/status"
 
 describe("status-format", () => {
   it("getStatusLabel 返回对应的中文文案", () => {
@@ -21,5 +25,12 @@ describe("status-format", () => {
 
   it("未知状态返回默认文案", () => {
     expect(getStatusLabel("unknown" as never)).toBe("未知")
+  })
+
+  it("平台代码映射为中文标签", () => {
+    expect(getPlatformLabel("TOMATO")).toBe("番茄")
+    expect(getPlatformLabel("JUBIAN")).toBe("剧变")
+    expect(getPlatformLabel("unknown")).toBe("unknown")
+    expect(getPlatformLabel(null)).toBe("—")
   })
 })

@@ -25,7 +25,7 @@ export interface ExceptionItem {
   risk: RiskLevel
   risk_label: string
   risk_color: string
-  screenshot_urls?: string[] | null
+  screenshots?: string[] | null
   page_url?: string | null
   related_config?: Record<string, string | number | boolean> | null
   suggested_steps?: string[] | null
@@ -45,7 +45,11 @@ function toExceptionItem(raw: RawException): ExceptionItem {
     category_label: category.label,
     risk: category.risk,
     risk_label: risk.label,
-    risk_color: risk.color
+    risk_color: risk.color,
+    suggested_steps: raw.suggested_steps?.length
+      ? raw.suggested_steps
+      : category.suggested_steps,
+    screenshots: raw.screenshots ?? null
   }
 }
 

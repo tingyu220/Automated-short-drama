@@ -7,12 +7,7 @@ import StatusDot from "@/shared/ui/StatusDot.vue"
 import { formatDateTime } from "@/shared/utils/format"
 import type { ExceptionItem } from "@/app/stores/exception"
 
-export type ExceptionAction =
-  | "modify_config"
-  | "relogin"
-  | "view_screenshot"
-  | "recheck"
-  | "continue"
+export type ExceptionAction = "modify_config"
 
 const props = defineProps<{
   items: ExceptionItem[]
@@ -24,14 +19,6 @@ const emit = defineEmits<{
   (e: "retry"): void
   (e: "action", payload: { item: ExceptionItem; action: ExceptionAction }): void
 }>()
-
-const ACTION_LABEL: Record<ExceptionAction, string> = {
-  modify_config: "修改配置",
-  relogin: "重新登录",
-  view_screenshot: "查看截图",
-  recheck: "重新检测",
-  continue: "继续执行"
-}
 
 const selectedId = ref<string | null>(props.items[0]?.id ?? null)
 const selected = computed(
@@ -125,13 +112,6 @@ function suggestedSteps(item: ExceptionItem): string[] {
                   >
                     修改配置
                   </button>
-                  <button
-                    type="button"
-                    class="exception-panel__action"
-                    @click="run(item, 'recheck')"
-                  >
-                    重新检测
-                  </button>
                 </td>
               </tr>
             </tbody>
@@ -162,8 +142,8 @@ function suggestedSteps(item: ExceptionItem): string[] {
             <div class="exception-panel__field">
               <dt>最近截图</dt>
               <dd>
-                <span v-if="selected.screenshot_urls?.length">
-                  {{ selected.screenshot_urls[0] }}
+                <span v-if="selected.screenshots?.length">
+                  {{ selected.screenshots[0] }}
                 </span>
                 <span v-else>暂无截图</span>
               </dd>
@@ -196,18 +176,6 @@ function suggestedSteps(item: ExceptionItem): string[] {
             <pre>{{ selected.stack_trace || "暂无技术信息" }}</pre>
           </details>
 
-          <footer class="exception-panel__actions">
-            <button
-              v-for="action in (['modify_config', 'relogin', 'view_screenshot', 'recheck', 'continue'] as ExceptionAction[])"
-              :key="action"
-              type="button"
-              class="exception-panel__action"
-              :class="{ 'exception-panel__action--primary': action === 'continue' }"
-              @click="run(selected, action)"
-            >
-              {{ ACTION_LABEL[action] }}
-            </button>
-          </footer>
         </aside>
       </div>
     </template>
@@ -311,14 +279,6 @@ function suggestedSteps(item: ExceptionItem): string[] {
   right: 0;
   min-width: 170px;
   box-shadow: -4px 0 8px rgb(30 36 48 / 6%);
-}
-
-.exception-panel__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 16px;
-  border-top: 1px solid #f0f1f3;
 }
 
 .exception-panel__action {

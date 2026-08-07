@@ -4,7 +4,6 @@ import { ElButton, ElMessage } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import ConfirmActionDialog from "@/shared/ui/ConfirmActionDialog.vue"
 import PageHeader from "@/shared/ui/PageHeader.vue"
-import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import QueueMonitor, {
   type QueueAction,
   type QueueWorkerStatus
@@ -15,8 +14,7 @@ import { useTaskStore } from "@/app/stores/task"
 import {
   formatDateTime,
   formatDuration,
-  queueStateToStep,
-  WORKFLOW_STEPS
+  isLeaseActive
 } from "@/entities/task/types"
 
 const queueStore = useQueueStore()
@@ -27,25 +25,17 @@ const WORKER_ID = "ui-worker"
 
 const confirmVisible = ref(false)
 const pendingAction = ref<{ item: QueueItem; action: QueueAction } | null>(null)
-const page = ref(1)
-const pageSize = ref(10)
 
 const RISK_TEXT: Record<
-  "release_lock" | "force_stop" | "requeue" | "cancel",
+  "requeue" | "cancel",
   string
 > = {
-  release_lock:
-    "释放 Worker 锁后，当前执行进度可能丢失，任务将由恢复流程重新领取。",
-  force_stop:
-    "强制停止会中断当前执行，未完成的写操作可能产生部分写入或结果不确定，需要人工核对。",
   requeue:
     "重新入队会把任务放回排队中并重置重试次数，正在执行的步骤不会继续。",
   cancel: "取消任务会终止后续自动化流程，且无法自动恢复。"
 }
 
 const ACTION_LABEL: Record<QueueAction, string> = {
-  release_lock: "释放锁",
-  force_stop: "强制停止",
   requeue: "重新入队",
   cancel: "取消任务",
   pause: "暂停",
@@ -71,33 +61,29 @@ onMounted(load)
 const runningItem = computed(
   () =>
     queueStore.items.find(
-      (item) => item.state === "RUNNING" || item.state === "CLAIMED"
+      (item) =>
+        (item.state === "RUNNING" || item.state === "CLAIMED") &&
+        isLeaseActive(item)
     ) ?? null
 )
 
 const workerStatus = computed<QueueWorkerStatus>(() => {
-  const heartbeat = systemStore.workerHeartbeat
-  const online =
-    heartbeat === true ||
-    heartbeat === "ok" ||
-    heartbeat === "online" ||
-    heartbeat === "1"
+  const online = systemStore.isWorkerOnline()
   const item = runningItem.value
-  const task = item
-    ? taskStore.tasks.find((entry) => entry.id === item.task_id)
-    : undefined
-  const stepKey = queueStateToStep(item?.state)
-  const step =
-    WORKFLOW_STEPS.find((entry) => entry.key === stepKey)?.label ?? "—"
   return {
     online,
     heartbeatText: online ? "正常" : "离线",
-    currentTask: task?.drama_name ?? "—",
+    currentTask: item
+      ? (taskStore.tasks.find((entry) => entry.id === item.task_id)
+          ?.drama_name ?? "—")
+      : "—",
     leaseUntil: item?.lease_until
       ? formatDateTime(item.lease_until)
       : "—",
-    platform: task?.platform ?? "—",
-    step,
+    platform: item
+      ? (taskStore.tasks.find((entry) => entry.id === item.task_id)
+          ?.platform ?? "—")
+      : "—",
     runtime: item
       ? formatDuration(
           item.updated_at ?? item.created_at ?? item.available_at
@@ -105,13 +91,6 @@ const workerStatus = computed<QueueWorkerStatus>(() => {
       : "—"
   }
 })
-
-const pagedItems = computed(() =>
-  queueStore.items.slice(
-    (page.value - 1) * pageSize.value,
-    page.value * pageSize.value
-  )
-)
 
 function handleAction(payload: { item: QueueItem; action: QueueAction }) {
   if (payload.action === "pause" || payload.action === "resume") {
@@ -145,9 +124,6 @@ async function runAction(payload: { item: QueueItem; action: QueueAction }) {
     } else if (action === "resume") {
       await queueStore.resume(item.id, WORKER_ID)
       ElMessage.success("任务已恢复")
-    } else {
-      ElMessage.info(`${ACTION_LABEL[action]}接口待后端接入`)
-      return
     }
     await load()
   } catch (err) {
@@ -163,10 +139,7 @@ const confirmTitle = computed(() => {
 const confirmContent = computed(() => {
   const payload = pendingAction.value
   if (!payload) return ""
-  const risk =
-    RISK_TEXT[
-      payload.action as "release_lock" | "force_stop" | "requeue" | "cancel"
-    ] ?? ""
+  const risk = RISK_TEXT[payload.action as "requeue" | "cancel"] ?? ""
   const drama =
     taskStore.tasks.find((task) => task.id === payload.item.task_id)
       ?.drama_name ?? "当前任务"
@@ -189,19 +162,13 @@ const confirmContent = computed(() => {
     </PageHeader>
 
     <QueueMonitor
-      :items="pagedItems"
+      :items="queueStore.items"
       :tasks="taskStore.tasks"
       :loading="queueStore.loading"
       :error="queueStore.error"
       :worker="workerStatus"
       @action="handleAction"
       @retry="load"
-    />
-
-    <PaginationBar
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="queueStore.items.length"
     />
 
     <ConfirmActionDialog

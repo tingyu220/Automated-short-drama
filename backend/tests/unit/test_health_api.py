@@ -1,9 +1,15 @@
 """健康检查 API 测试。"""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from backend.infrastructure.database.base import Base
+from backend.infrastructure.database.models.worker import WorkerLeaseRecord
 from backend.interfaces.api.main import create_app
 
 
@@ -68,3 +74,46 @@ class TestHealthz:
         data = response.json()
         assert data["status"] == "degraded"
         assert data["database"] == "error"
+
+    def test_worker_heartbeat_from_lease(self, monkeypatch, tmp_path):
+        """存在未过期 RUNNING 租约时 worker_heartbeat=true。"""
+        engine = create_engine(f"sqlite:///{tmp_path / 'health.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(
+            bind=engine, autoflush=False, expire_on_commit=False
+        )
+        with session_factory() as session:
+            session.add(
+                WorkerLeaseRecord(
+                    worker_id="worker-1",
+                    host="localhost",
+                    pid=1,
+                    status="RUNNING",
+                    heartbeat_at=datetime(2026, 8, 7, 2, 0, 0),
+                    lease_until=datetime.now(timezone.utc).replace(tzinfo=None)
+                    + timedelta(minutes=5),
+                )
+            )
+            session.commit()
+        monkeypatch.setattr(
+            "backend.interfaces.api.routes.health.SessionLocal", session_factory
+        )
+
+        response = TestClient(create_app()).get("/healthz")
+        assert response.status_code == 200
+        assert response.json()["worker_heartbeat"] is True
+
+    def test_worker_heartbeat_false_without_lease(self, monkeypatch, tmp_path):
+        """无活跃租约时 worker_heartbeat=false。"""
+        engine = create_engine(f"sqlite:///{tmp_path / 'health-empty.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(
+            bind=engine, autoflush=False, expire_on_commit=False
+        )
+        monkeypatch.setattr(
+            "backend.interfaces.api.routes.health.SessionLocal", session_factory
+        )
+
+        response = TestClient(create_app()).get("/healthz")
+        assert response.status_code == 200
+        assert response.json()["worker_heartbeat"] is False

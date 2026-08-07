@@ -32,9 +32,33 @@ export interface SimulationResult {
   outputs: SimulationOutput[]
 }
 
+export interface TemplatePriceRule {
+  id: string
+  key: string
+  target_price: number
+  min_price: number
+  max_price: number
+  same_distance_strategy: string
+  enabled: boolean
+}
+
+export interface MaterialRuleRange {
+  id: string
+  key: string
+  min_material_count: number
+  max_material_count: number | null
+  strategy: string
+  base_group_count: number
+  copy_count: number
+  group_size_cap: number
+  target_project_count: number
+}
+
 export const useRuleStore = defineStore("rule", () => {
   const ruleSets = ref<RuleSet[]>([])
   const versions = ref<RuleVersion[]>([])
+  const priceRules = ref<TemplatePriceRule[]>([])
+  const materialRules = ref<MaterialRuleRange[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -57,6 +81,30 @@ export const useRuleStore = defineStore("rule", () => {
       versions.value = await apiGet<RuleVersion[]>(
         `/rules/${ruleSetId}/versions`
       )
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchPriceRules() {
+    loading.value = true
+    error.value = null
+    try {
+      priceRules.value = await apiGet<TemplatePriceRule[]>("/rules/price-rules")
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchMaterialRules() {
+    loading.value = true
+    error.value = null
+    try {
+      materialRules.value = await apiGet<MaterialRuleRange[]>("/rules/material-rules")
     } catch (err) {
       error.value = toErrorMessage(err)
     } finally {
@@ -133,10 +181,14 @@ export const useRuleStore = defineStore("rule", () => {
   return {
     ruleSets,
     versions,
+    priceRules,
+    materialRules,
     loading,
     error,
     fetchRules,
     fetchVersions,
+    fetchPriceRules,
+    fetchMaterialRules,
     clearVersions,
     validate,
     saveDraft,

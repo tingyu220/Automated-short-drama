@@ -15,6 +15,7 @@ class MaterialRuleRange:
     copy_count: int
     group_size_cap: int
     target_project_count: int
+    key: str = ""
     max_material_count: int | None = None
     id: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

@@ -18,21 +18,27 @@ const props = defineProps<{
 }>()
 
 const stats = computed(() => {
-  const queueTaskIds = new Set(props.queueItems.map((item) => item.task_id))
-  const tasksWithoutQueue = props.tasks.filter(
-    (task) => !queueTaskIds.has(task.id)
+  const activeQueueTaskIds = new Set(
+    props.queueItems
+      .filter(
+        (item) => item.state !== "COMPLETED" && item.state !== "CANCELLED"
+      )
+      .map((item) => item.task_id)
+  )
+  const tasksWithoutActiveQueue = props.tasks.filter(
+    (task) => !activeQueueTaskIds.has(task.id)
   )
   const queueCount = (state: string) =>
     props.queueItems.filter((item) => item.state === state).length
   const taskCount = (status: string) =>
-    tasksWithoutQueue.filter((task) => task.status === status).length
+    tasksWithoutActiveQueue.filter((task) => task.status === status).length
   return {
     waiting: queueCount("WAITING_TIME") + taskCount("WAITING_TIME"),
     queued: queueCount("QUEUED"),
     running: queueCount("RUNNING") + queueCount("CLAIMED") + taskCount("RUNNING"),
     manual: queueCount("MANUAL_REVIEW") + taskCount("MANUAL_REVIEW"),
     ready: taskCount("READY"),
-    completed: queueCount("COMPLETED") + taskCount("COMPLETED")
+    completed: taskCount("COMPLETED")
   }
 })
 

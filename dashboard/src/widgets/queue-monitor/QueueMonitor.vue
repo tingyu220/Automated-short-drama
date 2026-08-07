@@ -6,15 +6,11 @@ import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
 import {
   formatDateTime,
-  queueStateToStep,
-  WORKFLOW_STEPS,
   type QueueItemView,
   type TaskBase
 } from "@/entities/task/types"
 
 export type QueueAction =
-  | "release_lock"
-  | "force_stop"
   | "requeue"
   | "cancel"
   | "pause"
@@ -26,7 +22,6 @@ export interface QueueWorkerStatus {
   currentTask: string
   leaseUntil: string
   platform: string
-  step: string
   runtime: string
 }
 
@@ -65,13 +60,6 @@ const emit = defineEmits<{
   (e: "retry"): void
 }>()
 
-function stepLabel(state: string): string {
-  const step = WORKFLOW_STEPS.find(
-    (entry) => entry.key === queueStateToStep(state)
-  )
-  return step?.label ?? "—"
-}
-
 const groups = computed(() =>
   GROUPS.map((group) => ({
     ...group,
@@ -81,8 +69,7 @@ const groups = computed(() =>
         const task = props.tasks.find((entry) => entry.id === item.task_id)
         return {
           ...item,
-          dramaName: task?.drama_name ?? "—",
-          stepLabel: stepLabel(item.state)
+          dramaName: task?.drama_name ?? "—"
         }
       })
   }))
@@ -93,8 +80,6 @@ function actionsFor(item: QueueItemView): QueueActionOption[] {
     case "CLAIMED":
     case "RUNNING":
       return [
-        { key: "release_lock", label: "释放锁", danger: true },
-        { key: "force_stop", label: "强制停止", danger: true },
         { key: "pause", label: "暂停" },
         { key: "cancel", label: "取消", danger: true }
       ]
@@ -136,7 +121,6 @@ const workerFields = computed(() => [
   { label: "当前锁定任务", value: props.worker.currentTask, color: "", active: false },
   { label: "租约过期时间", value: props.worker.leaseUntil, color: "", active: false },
   { label: "当前平台", value: props.worker.platform, color: "", active: false },
-  { label: "当前步骤", value: props.worker.step, color: "", active: false },
   { label: "运行时长", value: props.worker.runtime, color: "", active: false }
 ])
 </script>
@@ -199,7 +183,6 @@ const workerFields = computed(() => [
                 <th>剧名</th>
                 <th>优先级</th>
                 <th>可执行时间</th>
-                <th>当前步骤</th>
                 <th>重试次数</th>
                 <th>租约</th>
                 <th class="queue-monitor__operations-head">操作</th>
@@ -210,7 +193,6 @@ const workerFields = computed(() => [
                 <td class="queue-monitor__drama">{{ row.dramaName }}</td>
                 <td>{{ row.priority }}</td>
                 <td>{{ formatDateTime(row.available_at) }}</td>
-                <td>{{ row.stepLabel }}</td>
                 <td>{{ row.attempt_count }}</td>
                 <td>{{ formatDateTime(row.lease_until) }}</td>
                 <td class="queue-monitor__operations">

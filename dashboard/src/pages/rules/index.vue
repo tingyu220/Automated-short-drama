@@ -57,26 +57,26 @@ const CATEGORIES = [
 
 const selectedCategory = ref("price")
 
-const priceRules = ref<PriceRuleInput[]>([
-  {
-    key: "iap_2_9",
-    name: "IAP 2.9",
-    targetPrice: 2.9,
-    minPrice: 2.6,
-    maxPrice: 5,
-    sameDistanceStrategy: "HIGHER_PRICE_FIRST",
-    enabled: true
-  },
-  {
-    key: "iap_9_9",
-    name: "IAP 9.9",
-    targetPrice: 9.9,
-    minPrice: 8.8,
-    maxPrice: 13.8,
-    sameDistanceStrategy: "HIGHER_PRICE_FIRST",
-    enabled: true
-  }
-])
+const priceRules = ref<PriceRuleInput[]>([])
+
+const PRICE_RULE_NAMES: Record<string, string> = {
+  iap_2_9: "IAP 2.9",
+  iap_9_9: "IAP 9.9"
+}
+
+function syncPriceRulesFromStore() {
+  priceRules.value = ruleStore.priceRules.map((rule) => ({
+    key: rule.key,
+    name: PRICE_RULE_NAMES[rule.key] ?? rule.key,
+    targetPrice: rule.target_price,
+    minPrice: rule.min_price,
+    maxPrice: rule.max_price,
+    sameDistanceStrategy: rule.same_distance_strategy,
+    enabled: rule.enabled
+  }))
+}
+
+const materialRuleRows = computed(() => ruleStore.materialRules)
 
 const priceRuleSets = computed(() =>
   ruleStore.ruleSets.filter((rule) => rule.category === "价格模板")
@@ -107,11 +107,16 @@ async function loadVersions() {
 }
 
 async function load() {
-  await ruleStore.fetchRules()
+  await Promise.all([
+    ruleStore.fetchRules(),
+    ruleStore.fetchPriceRules(),
+    ruleStore.fetchMaterialRules(),
+    sessionStore.fetchSessions()
+  ])
+  syncPriceRulesFromStore()
   await loadVersions()
   await deliveryConfigStore.loadForCategory("cid")
   await deliveryConfigStore.loadForCategory(selectedCategory.value)
-  await sessionStore.fetchSessions()
 }
 
 onMounted(load)
@@ -163,7 +168,13 @@ async function onPublish(ruleSetId: string) {
     return
   }
   ElMessage.success(`已发布版本 v${version.version}`)
-  await Promise.all([ruleStore.fetchRules(), loadVersions()])
+  await Promise.all([
+    ruleStore.fetchRules(),
+    ruleStore.fetchPriceRules(),
+    ruleStore.fetchMaterialRules(),
+    loadVersions()
+  ])
+  syncPriceRulesFromStore()
 }
 
 async function onSaveMapping(rows: MappingRow[]) {
@@ -224,6 +235,7 @@ async function onSaveSettings(
           :accounts="deliveryConfigStore.accounts"
           :ad-presets="deliveryConfigStore.adPresets"
           :open-presets="deliveryConfigStore.openPresets"
+          :material-rules="materialRuleRows"
           :mapping-proposal="mappingProposal"
           :delivery-loading="deliveryConfigStore.loading"
           :saving="deliveryConfigStore.saving"

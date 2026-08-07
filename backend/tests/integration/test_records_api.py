@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from alembic import command
@@ -226,3 +227,22 @@ class TestRecordsApi:
         assert client.get(
             "/api/records/artifacts", params={"task_id": task_id}
         ).json() == []
+
+    def test_download_artifact_within_data_dir(
+        self, client, session_factory, monkeypatch, tmp_path
+    ):
+        """产物文件可从数据目录内下载，越界路径返回 404。"""
+        artifact_file = tmp_path / "logs" / "run-1.log"
+        artifact_file.parent.mkdir(parents=True)
+        artifact_file.write_text("执行日志", encoding="utf-8")
+        monkeypatch.setattr(
+            "backend.interfaces.api.routes.records.Settings",
+            lambda: SimpleNamespace(data_dir=tmp_path),
+        )
+
+        ok_response = client.get("/api/artifacts/logs/run-1.log")
+        assert ok_response.status_code == 200
+        assert ok_response.text == "执行日志"
+
+        outside = client.get("/api/artifacts/../secrets.txt")
+        assert outside.status_code == 404

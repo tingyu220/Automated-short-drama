@@ -97,11 +97,45 @@ class LedgerView(BaseModel):
     task_id: str
     drama_name: str
     platform: str
+    sheet_row: int | None = None
+    album_id: str = ""
+    product_id: str = ""
     final_status: str
     completed_at: datetime | None
     task_name: str = ""
     external_task_id: str = ""
     rule_version: str = ""
+    config_version: str = ""
+
+
+class TemplatePriceRuleView(BaseModel):
+    """IAP 模板价格规则视图。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    key: str
+    target_price: float
+    min_price: float
+    max_price: float
+    same_distance_strategy: str
+    enabled: bool
+
+
+class MaterialRuleRangeView(BaseModel):
+    """素材数量区间规则视图。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    key: str
+    min_material_count: int
+    max_material_count: int | None
+    strategy: str
+    base_group_count: int
+    copy_count: int
+    group_size_cap: int
+    target_project_count: int
 
 
 class ExecutionEventView(BaseModel):

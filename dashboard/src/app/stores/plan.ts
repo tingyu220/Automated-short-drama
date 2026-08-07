@@ -8,20 +8,15 @@ export interface LedgerView {
   task_id: string
   drama_name: string
   platform: string
+  sheet_row?: number | null
+  album_id?: string | null
+  product_id?: string | null
   final_status: string
   completed_at: string | null
   task_name?: string | null
-  plan_type?: string | null
-  account_count?: number | null
-  cid_count?: number | null
-  material_count?: number | null
-  material_group_count?: number | null
-  expected_project_count?: number | null
   rule_version?: string | null
-  validation_status?: string | null
-  submit_status?: string | null
+  config_version?: string | null
   external_task_id?: string | null
-  created_at?: string | null
 }
 
 export interface PlanView {
@@ -31,26 +26,17 @@ export interface PlanView {
   platform: string
   status: string
   completedAt: string | null
+  feishuRow: string
+  albumId: string
+  productId: string
   taskName: string
-  planType: string
-  accountCount: string
-  cidCount: string
-  materialCount: string
-  materialGroupCount: string
-  expectedProjectCount: string
   ruleVersion: string
-  validationStatus: string
-  submitStatus: string
+  configVersion: string
   externalTaskId: string
-  createdAt: string
 }
 
-function displayText(value: string | null | undefined): string {
+function displayText(value: string | number | null | undefined): string {
   return value ? String(value) : "—"
-}
-
-function displayCount(value: number | null | undefined): string {
-  return value === null || value === undefined ? "—" : String(value)
 }
 
 function toPlanView(ledger: LedgerView): PlanView {
@@ -61,18 +47,13 @@ function toPlanView(ledger: LedgerView): PlanView {
     platform: ledger.platform,
     status: ledger.final_status,
     completedAt: ledger.completed_at,
+    feishuRow: displayText(ledger.sheet_row),
+    albumId: displayText(ledger.album_id),
+    productId: displayText(ledger.product_id),
     taskName: displayText(ledger.task_name),
-    planType: displayText(ledger.plan_type),
-    accountCount: displayCount(ledger.account_count),
-    cidCount: displayCount(ledger.cid_count),
-    materialCount: displayCount(ledger.material_count),
-    materialGroupCount: displayCount(ledger.material_group_count),
-    expectedProjectCount: displayCount(ledger.expected_project_count),
     ruleVersion: displayText(ledger.rule_version),
-    validationStatus: displayText(ledger.validation_status),
-    submitStatus: displayText(ledger.submit_status),
-    externalTaskId: displayText(ledger.external_task_id),
-    createdAt: displayText(ledger.created_at ?? ledger.completed_at)
+    configVersion: displayText(ledger.config_version),
+    externalTaskId: displayText(ledger.external_task_id)
   }
 }
 

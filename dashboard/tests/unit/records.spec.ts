@@ -65,7 +65,7 @@ describe("台账字段格式化", () => {
       ruleVersion: "3",
       configVersion: "7"
     })
-    expect(formatLedgerRow(ledgerPayload).completedAt).toContain("2026-08-06 10:05")
+    expect(formatLedgerRow(ledgerPayload).completedAt).toContain("2026-08-06 18:05")
   })
 
   it("缺失字段显示占位符", () => {
@@ -103,7 +103,7 @@ describe("RecordsPage", () => {
 
     expect(wrapper.text()).toContain("测试剧")
     expect(wrapper.text()).toContain("EXT-300")
-    expect(wrapper.text()).toContain("2026-08-06 10:05")
+    expect(wrapper.text()).toContain("2026-08-06 18:05")
     expect(wrapper.text()).toContain("已完成")
   })
 

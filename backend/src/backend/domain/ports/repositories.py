@@ -124,12 +124,16 @@ class PriceRuleRepository(Protocol):
     """TemplatePriceRule 仓储协议."""
 
     def list_template_price_rules(self) -> list[TemplatePriceRule]: ...
+    def upsert_template_price_rule(self, rule: TemplatePriceRule) -> None: ...
 
 
 class MaterialRuleRepository(Protocol):
     """MaterialRuleRange 仓储协议."""
 
     def list_material_rule_ranges(self) -> list[MaterialRuleRange]: ...
+    def replace_material_rule_ranges(
+        self, ranges: list[MaterialRuleRange]
+    ) -> None: ...
 
 
 class SnapshotRepository(Protocol):

@@ -107,11 +107,11 @@ describe("ExceptionPanel", () => {
 
     const button = wrapper
       .findAll("button")
-      .find((item) => item.text().includes("继续执行"))
+      .find((item) => item.text().includes("修改配置"))
     expect(button).toBeTruthy()
     await button?.trigger("click")
     expect(wrapper.emitted("action")).toEqual([
-      [{ item: makeItem(), action: "continue" }]
+      [{ item: makeItem(), action: "modify_config" }]
     ])
   })
 

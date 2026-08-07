@@ -9,7 +9,6 @@ import {
   ElSelect
 } from "element-plus"
 import {
-  Download,
   Refresh,
   Search,
   Upload
@@ -20,18 +19,19 @@ import PaginationBar from "@/shared/ui/PaginationBar.vue"
 import TaskDetailDrawer from "@/features/task-detail/TaskDetailDrawer.vue"
 import TaskTable from "@/widgets/task-table/TaskTable.vue"
 import { useQueueStore } from "@/app/stores/queue"
+import { useRecordsStore } from "@/app/stores/records"
 import { useTaskStore } from "@/app/stores/task"
-import { getStatusLabel } from "@/shared/utils/status"
+import { getPlatformLabel, getStatusLabel } from "@/shared/utils/status"
 import {
-  WORKFLOW_STEPS,
   toTaskView,
   type TaskAction,
-  type PromotionLink,
-  type TaskView
+  type TaskView,
+  type WorkflowRunItem
 } from "@/entities/task/types"
 
 const taskStore = useTaskStore()
 const queueStore = useQueueStore()
+const recordsStore = useRecordsStore()
 
 const WORKER_ID = "ui-worker"
 const TERMINAL_QUEUE_STATES = ["COMPLETED", "CANCELLED"]
@@ -50,12 +50,6 @@ const STATUS_OPTIONS = [
   "CANCELLED"
 ]
 
-const STAGE_OPTIONS = WORKFLOW_STEPS.map((step) => step.key)
-
-function stageLabel(key: string): string {
-  return WORKFLOW_STEPS.find((step) => step.key === key)?.label ?? key
-}
-
 function today(): string {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, "0")
@@ -66,7 +60,6 @@ const date = ref(today())
 const searchQ = ref("")
 const platform = ref("")
 const status = ref("")
-const stage = ref("")
 const exceptionFilter = ref("")
 const page = ref(1)
 const pageSize = ref(10)
@@ -74,40 +67,22 @@ const pageSize = ref(10)
 const drawerOpen = ref(false)
 const confirmVisible = ref(false)
 const pendingAction = ref<{ task: TaskView; action: TaskAction } | null>(null)
+const timeline = ref<WorkflowRunItem[]>([])
 
 const platformOptions = computed(() => {
   const values = Array.from(
     new Set(taskStore.tasks.map((task) => task.platform).filter(Boolean))
   )
-  return values.length > 0 ? values : ["番茄", "剧变"]
+  const fallback = ["TOMATO", "JUBIAN"]
+  return (values.length > 0 ? values : fallback).map((value) => ({
+    label: getPlatformLabel(value),
+    value
+  }))
 })
 
 const detailTask = computed<TaskView | null>(() =>
   taskStore.detail ? toTaskView(taskStore.detail) : null
 )
-
-const detailLinks = computed<PromotionLink[]>(() => {
-  const task = detailTask.value
-  if (!task) return []
-  const base: Array<{
-    key: PromotionLink["key"]
-    label: string
-    status: string | null | undefined
-  }> = [
-    { key: "iaa", label: "IAA", status: task.iaa },
-    { key: "iap_9_9", label: "9.9", status: task.price_9_9 },
-    { key: "iap_2_9", label: "2.9", status: task.price_2_9 }
-  ]
-  return base.map((item) => ({
-    key: item.key,
-    label: item.label,
-    status: item.status ?? "",
-    source: "—",
-    entry: "—",
-    method: "—",
-    url: ""
-  }))
-})
 
 const filteredTasks = computed(() => {
   const q = searchQ.value.trim().toLowerCase()
@@ -116,9 +91,6 @@ const filteredTasks = computed(() => {
     .filter((task) => {
       if (platform.value && task.platform !== platform.value) return false
       if (status.value && task.status !== status.value) return false
-      if (stage.value && task.current_step !== stage.value) {
-        return false
-      }
       if (
         exceptionFilter.value === "has" &&
         !["MANUAL_REVIEW", "FAILED"].includes(task.status)
@@ -160,6 +132,21 @@ onMounted(loadAll)
 function openTask(task: TaskView) {
   drawerOpen.value = true
   void taskStore.fetchTask(task.id)
+  void recordsStore
+    .fetchTaskEvents(task.id)
+    .then((events) => {
+      timeline.value = events.map((event) => ({
+        step: String(event.context_json?.step_name ?? event.event_type),
+        status: event.level,
+        started_at: event.occurred_at,
+        finished_at: event.occurred_at,
+        result: event.message,
+        error: event.level === "ERROR" ? event.message : null
+      }))
+    })
+    .catch(() => {
+      timeline.value = []
+    })
 }
 
 async function runQueueAction(action: TaskAction, task: TaskView) {
@@ -256,13 +243,6 @@ async function enqueueFiltered() {
   await loadAll()
 }
 
-function syncFeishu() {
-  ElMessage.info("飞书同步将在后续阶段接入")
-}
-
-function exportTasks() {
-  ElMessage.info("导出功能将在后续阶段接入")
-}
 </script>
 
 <template>
@@ -301,9 +281,9 @@ function exportTasks() {
       >
         <ElOption
           v-for="item in platformOptions"
-          :key="item"
-          :label="item"
-          :value="item"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
         />
       </ElSelect>
       <ElSelect
@@ -320,19 +300,6 @@ function exportTasks() {
         />
       </ElSelect>
       <ElSelect
-        v-model="stage"
-        placeholder="当前阶段"
-        clearable
-        @change="loadAll"
-      >
-        <ElOption
-          v-for="item in STAGE_OPTIONS"
-          :key="item"
-          :label="stageLabel(item)"
-          :value="item"
-        />
-      </ElSelect>
-      <ElSelect
         v-model="exceptionFilter"
         placeholder="异常状态"
         clearable
@@ -341,10 +308,6 @@ function exportTasks() {
         <ElOption label="无异常" value="none" />
       </ElSelect>
       <div class="tasks-filter__actions">
-        <ElButton @click="syncFeishu">
-          <el-icon><Refresh /></el-icon>
-          同步飞书
-        </ElButton>
         <ElButton :loading="taskStore.loading" @click="loadAll">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -352,10 +315,6 @@ function exportTasks() {
         <ElButton @click="enqueueFiltered">
           <el-icon><Upload /></el-icon>
           手动入队
-        </ElButton>
-        <ElButton @click="exportTasks">
-          <el-icon><Download /></el-icon>
-          导出
         </ElButton>
       </div>
     </section>
@@ -379,7 +338,7 @@ function exportTasks() {
     <TaskDetailDrawer
       :open="drawerOpen"
       :task="detailTask"
-      :links="detailLinks"
+      :timeline="timeline"
       @update:open="drawerOpen = $event"
     />
 

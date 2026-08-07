@@ -19,6 +19,22 @@ function statusText(value: unknown): string {
   return String(value)
 }
 
+function workerText(): string {
+  return systemStore.isWorkerOnline() ? "在线" : "离线"
+}
+
+function statusValue(key: string): unknown {
+  if (key === "environment") return systemStore.environment
+  if (key === "workerHeartbeat") return systemStore.workerHeartbeat
+  if (key === "database") return systemStore.database
+  return null
+}
+
+function statusDotClass(key: string): boolean {
+  if (key === "workerHeartbeat") return systemStore.isWorkerOnline()
+  return String(statusValue(key)) === "ok"
+}
+
 onMounted(() => {
   systemStore.fetchHealth()
 })
@@ -33,9 +49,18 @@ onMounted(() => {
     </div>
     <div class="topbar__status">
       <span v-for="s in statusLabels" :key="s.key" class="topbar__status-item">
-        <span class="topbar__status-dot" :class="{ online: String(systemStore[s.key]) === 'ok' }" />
+        <span
+          class="topbar__status-dot"
+          :class="{ online: statusDotClass(s.key) }"
+        />
         <span class="topbar__status-label">{{ s.label }}</span>
-        <span class="topbar__status-value">{{ statusText(systemStore[s.key]) }}</span>
+        <span class="topbar__status-value">
+          {{
+            s.key === "workerHeartbeat"
+              ? workerText()
+              : statusText(statusValue(s.key))
+          }}
+        </span>
       </span>
     </div>
   </header>

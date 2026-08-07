@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -197,6 +198,32 @@ class SqlAlchemyPriceRuleRepository:
         )
         return [self._to_domain(record) for record in records]
 
+    def upsert_template_price_rule(self, rule: TemplatePriceRule) -> None:
+        """按 key 覆盖价格规则；不存在时新增。"""
+        record = (
+            self._session.query(TemplatePriceRuleRecord)
+            .filter(TemplatePriceRuleRecord.key == rule.key)
+            .first()
+        )
+        if record is None:
+            record = TemplatePriceRuleRecord(
+                id=rule.id or str(uuid.uuid4()),
+                key=rule.key,
+                target_price=rule.target_price,
+                min_price=rule.min_price,
+                max_price=rule.max_price,
+                same_distance_strategy=rule.same_distance_strategy,
+                enabled=rule.enabled,
+            )
+            self._session.add(record)
+        else:
+            record.target_price = rule.target_price
+            record.min_price = rule.min_price
+            record.max_price = rule.max_price
+            record.same_distance_strategy = rule.same_distance_strategy
+            record.enabled = rule.enabled
+        self._session.flush()
+
     @staticmethod
     def _to_domain(record: TemplatePriceRuleRecord) -> TemplatePriceRule:
         return TemplatePriceRule(
@@ -229,6 +256,24 @@ class SqlAlchemyMaterialRuleRepository:
         )
         return [self._to_domain(record) for record in records]
 
+    def replace_material_rule_ranges(self, ranges: list[MaterialRuleRange]) -> None:
+        """整体替换素材区间规则（发布时以草稿全量为准）。"""
+        self._session.query(MaterialRuleRangeRecord).delete()
+        for item in ranges:
+            record = MaterialRuleRangeRecord(
+                id=item.id or str(uuid.uuid4()),
+                key=item.key,
+                min_material_count=item.min_material_count,
+                max_material_count=item.max_material_count,
+                strategy=item.strategy,
+                base_group_count=item.base_group_count,
+                copy_count=item.copy_count,
+                group_size_cap=item.group_size_cap,
+                target_project_count=item.target_project_count,
+            )
+            self._session.add(record)
+        self._session.flush()
+
     @staticmethod
     def _to_domain(record: MaterialRuleRangeRecord) -> MaterialRuleRange:
         return MaterialRuleRange(
@@ -239,6 +284,7 @@ class SqlAlchemyMaterialRuleRepository:
             copy_count=record.copy_count,
             group_size_cap=record.group_size_cap,
             target_project_count=record.target_project_count,
+            key=record.key,
             id=record.id,
             created_at=record.created_at,
         )

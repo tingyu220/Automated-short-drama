@@ -5,11 +5,13 @@ import ErrorState from "@/shared/ui/ErrorState.vue"
 import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
 import TaskControlMenu from "@/features/task-control/TaskControlMenu.vue"
-import { getStatusColor, getStatusLabel } from "@/shared/utils/status"
+import {
+  getPlatformLabel,
+  getStatusColor,
+  getStatusLabel
+} from "@/shared/utils/status"
 import {
   formatDateTime,
-  getLinkStatusMeta,
-  WORKFLOW_STEPS,
   type TaskAction,
   type TaskView
 } from "@/entities/task/types"
@@ -28,14 +30,6 @@ const emit = defineEmits<{
 }>()
 
 const showTable = computed(() => props.rows.length > 0)
-
-function stageLabel(task: TaskView): string {
-  if (task.current_step) {
-    const step = WORKFLOW_STEPS.find((item) => item.key === task.current_step)
-    if (step) return step.label
-  }
-  return "—"
-}
 
 function continueLabel(task: TaskView): string {
   if (!task.queue_state || task.queue_state === "COMPLETED" || task.queue_state === "CANCELLED") {
@@ -69,15 +63,7 @@ function continueLabel(task: TaskView): string {
             <th>剧名</th>
             <th>平台</th>
             <th>投放时间</th>
-            <th>当前阶段</th>
             <th>任务状态</th>
-            <th>IAA</th>
-            <th>9.9</th>
-            <th>2.9</th>
-            <th>专辑ID</th>
-            <th>产品库</th>
-            <th>PlanSpec</th>
-            <th>计划状态</th>
             <th>最后更新时间</th>
             <th class="task-table__operations-head">操作</th>
           </tr>
@@ -85,37 +71,14 @@ function continueLabel(task: TaskView): string {
         <tbody>
           <tr v-for="row in rows" :key="row.id">
             <td class="task-table__drama">{{ row.drama_name }}</td>
-            <td>{{ row.platform }}</td>
+            <td>{{ getPlatformLabel(row.platform) }}</td>
             <td>{{ formatDateTime(row.available_time) }}</td>
-            <td>{{ stageLabel(row) }}</td>
             <td>
               <span class="task-table__status">
                 <StatusDot :color="getStatusColor(row.status)" :active="row.status === 'RUNNING'" />
                 {{ getStatusLabel(row.status) }}
               </span>
             </td>
-            <td>
-              <span class="task-table__status">
-                <StatusDot :color="getLinkStatusMeta(row.iaa).color" />
-                {{ getLinkStatusMeta(row.iaa).label }}
-              </span>
-            </td>
-            <td>
-              <span class="task-table__status">
-                <StatusDot :color="getLinkStatusMeta(row.price_9_9).color" />
-                {{ getLinkStatusMeta(row.price_9_9).label }}
-              </span>
-            </td>
-            <td>
-              <span class="task-table__status">
-                <StatusDot :color="getLinkStatusMeta(row.price_2_9).color" />
-                {{ getLinkStatusMeta(row.price_2_9).label }}
-              </span>
-            </td>
-            <td class="task-table__mono">{{ row.album_id ?? "—" }}</td>
-            <td class="task-table__mono">{{ row.product_library ?? "—" }}</td>
-            <td class="task-table__mono">{{ row.plan_spec ?? "未生成" }}</td>
-            <td>{{ row.plan_status ? getStatusLabel(row.plan_status) : "—" }}</td>
             <td>{{ formatDateTime(row.updated_at) }}</td>
             <td class="task-table__operations">
               <div class="task-table__actions">
@@ -154,7 +117,7 @@ function continueLabel(task: TaskView): string {
 
 .task-table__table {
   width: 100%;
-  min-width: 1280px;
+  min-width: 860px;
   border-collapse: collapse;
   background: var(--color-bg-panel);
   border: 1px solid #e5e7eb;

@@ -15,7 +15,7 @@ import { formatDateTime, formatFileSize } from "@/shared/utils/format"
 
 const recordsStore = useRecordsStore()
 
-const ACTIVE_TAB = "ledger"
+const activeTab = ref("ledger")
 const TAB_LABELS = [
   { key: "ledger", label: "业务台账" },
   { key: "workflow", label: "工作流运行" },
@@ -102,7 +102,7 @@ function levelColor(level: string): string {
       description="任务执行后会自动产生台账、事件、截图与文件记录"
     />
     <div v-else class="records-page__panel">
-      <el-tabs :model-value="ACTIVE_TAB" class="records-page__tabs">
+      <el-tabs v-model="activeTab" class="records-page__tabs">
         <el-tab-pane
           v-for="tab in TAB_LABELS"
           :key="tab.key"

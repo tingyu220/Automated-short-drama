@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import { ElInput } from "element-plus"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
+import { useRuleStore } from "@/app/stores/rule"
 import {
   parseCandidates,
-  simulatePriceCandidates,
   type PriceRuleInput,
   type PriceSimulationRow
 } from "./simulator"
@@ -17,11 +17,42 @@ const props = withDefaults(defineProps<{ rules?: PriceRuleInput[] }>(), {
 const candidatesText = ref("2.8, 3.0, 4.9")
 
 const candidates = computed(() => parseCandidates(candidatesText.value))
-const rows = computed<PriceSimulationRow[]>(() =>
-  simulatePriceCandidates(candidates.value, props.rules)
-)
+const ruleStore = useRuleStore()
+const rows = ref<PriceSimulationRow[]>([])
+const loading = ref(false)
 const enabledCount = computed(
   () => props.rules.filter((rule) => rule.enabled).length
+)
+
+watch(
+  candidates,
+  async (values) => {
+    if (values.length === 0) {
+      rows.value = []
+      return
+    }
+    loading.value = true
+    try {
+      const result = await ruleStore.simulatePrice(values)
+      rows.value = (result?.outputs ?? []).map((output) => ({
+        candidate: output.candidate,
+        matched: output.matched_rule_key !== null,
+        matchedRuleKey: output.matched_rule_key,
+        ruleName: output.matched_rule_key
+          ? (props.rules.find(
+              (rule) => rule.key === output.matched_rule_key
+            )?.name ??
+            output.matched_rule_key)
+          : null,
+        targetPrice: output.target_price,
+        distance: output.distance,
+        selectionReason: output.selection_reason ?? ""
+      }))
+    } finally {
+      loading.value = false
+    }
+  },
+  { immediate: true }
 )
 </script>
 
@@ -50,11 +81,17 @@ const enabledCount = computed(
       title="暂无价格规则"
       description="在价格模板中配置后即可模拟"
     />
+    <p v-else-if="loading" class="rule-simulator__hint">模拟计算中…</p>
+    <EmptyState
+      v-else-if="ruleStore.error && rows.length === 0"
+      title="模拟失败"
+      :description="ruleStore.error"
+    />
     <template v-else>
       <p v-if="candidates.length === 0" class="rule-simulator__hint">
         请输入至少一个数字价格
       </p>
-      <div v-else class="rule-simulator__scroll">
+      <div v-else-if="rows.length > 0" class="rule-simulator__scroll">
         <table class="rule-simulator__table">
           <thead>
             <tr>
@@ -89,6 +126,7 @@ const enabledCount = computed(
           </tbody>
         </table>
       </div>
+      <p v-else class="rule-simulator__hint">暂无匹配结果</p>
     </template>
   </section>
 </template>

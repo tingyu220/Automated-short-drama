@@ -2,17 +2,23 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.infrastructure.database.repositories.execution_repository import (
     SqlAlchemyExecutionRepository,
 )
+from backend.infrastructure.database.repositories.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 from backend.infrastructure.database.repositories.ledger_repository import (
     SqlAlchemyLedgerRepository,
 )
 from backend.infrastructure.database.session import get_session
+from backend.infrastructure.config.settings import Settings
 from backend.interfaces.api.schemas import (
     ExecutionArtifactView,
     ExecutionEventView,
@@ -38,7 +44,16 @@ def list_ledgers(
     ledgers = (
         ledger_repo.list_by_task(task_id) if task_id else ledger_repo.list_all()
     )
-    return [LedgerView.model_validate(ledger) for ledger in ledgers]
+    task_rows = {
+        task.id: task.sheet_row
+        for task in SqlAlchemyTaskRepository(db).list_by_filters()
+    }
+    views = []
+    for ledger in ledgers:
+        view = LedgerView.model_validate(ledger)
+        view.sheet_row = task_rows.get(ledger.task_id)
+        views.append(view)
+    return views
 
 
 @router.get("/records/events", response_model=list[ExecutionEventView])
@@ -59,3 +74,24 @@ def list_execution_artifacts(
     """列出执行产物，可按 task_id 过滤。"""
     artifacts = SqlAlchemyExecutionRepository(db).list_artifacts(task_id=task_id)
     return [ExecutionArtifactView.model_validate(artifact) for artifact in artifacts]
+
+
+@router.get("/artifacts/{artifact_path:path}")
+def get_artifact_file(artifact_path: str):
+    """按相对 data 目录的路径返回执行产物文件，越界路径一律 404。"""
+    data_dir = Settings().data_dir.resolve()
+    candidate = Path(artifact_path)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (data_dir / candidate).resolve()
+    )
+    try:
+        resolved.relative_to(data_dir)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404, detail="产物路径不在数据目录内"
+        ) from exc
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="产物文件不存在")
+    return FileResponse(resolved)

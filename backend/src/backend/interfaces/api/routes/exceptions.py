@@ -20,6 +20,15 @@ from backend.interfaces.api.schemas import ExceptionView
 router = APIRouter(tags=["exceptions"])
 
 _MANUAL_REVIEW_MESSAGE = "任务进入人工复核"
+_EVENT_STEP_MAP = {
+    "LINK_EXTRACTION": "链接提取",
+    "ACCOUNT_ALLOCATION": "账户分配",
+    "DELIVERY": "标准投放",
+    "TASK_STARTED": "任务开始",
+    "TASK_COMPLETED": "任务完成",
+    "STEP_FAILED": "步骤执行",
+    "PLANSPEC": "PlanSpec",
+}
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -36,6 +45,13 @@ def list_exceptions(db: Session = Depends(get_db)):
     task_by_id = {
         task.id: task for task in task_repo.list_by_filters()
     }
+    screenshots_by_task: dict[str, list[str]] = {}
+    for artifact in exec_repo.list_artifacts():
+        if artifact.artifact_type.upper() != "SCREENSHOT":
+            continue
+        screenshots_by_task.setdefault(artifact.task_id, []).append(
+            artifact.path
+        )
 
     items: list[ExceptionView] = [
         ExceptionView(
@@ -55,7 +71,8 @@ def list_exceptions(db: Session = Depends(get_db)):
                 else None
             ),
             error_type=event.event_type,
-            step=event.event_type,
+            step=_EVENT_STEP_MAP.get(event.event_type.upper(), event.event_type),
+            screenshots=screenshots_by_task.get(event.task_id) or None,
         )
         for event in exec_repo.list_events(level=EventLevel.ERROR)
     ]
@@ -69,6 +86,8 @@ def list_exceptions(db: Session = Depends(get_db)):
             drama_name=task.drama_name,
             platform=task.platform,
             error_type=TaskStatus.MANUAL_REVIEW,
+            step="人工复核",
+            screenshots=screenshots_by_task.get(task.id) or None,
         )
         for task in task_repo.list_by_state(TaskStatus.MANUAL_REVIEW)
     )

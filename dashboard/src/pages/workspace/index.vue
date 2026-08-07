@@ -7,6 +7,7 @@ import CurrentTaskPanel from "@/widgets/current-task/CurrentTaskPanel.vue"
 import TaskOverviewGrid from "@/widgets/task-overview/TaskOverviewGrid.vue"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
+import { getPlatformLabel } from "@/shared/utils/status"
 import { useExceptionStore } from "@/app/stores/exception"
 import { useQueueStore } from "@/app/stores/queue"
 import { useSessionStore } from "@/app/stores/session"
@@ -15,7 +16,8 @@ import { useTaskStore } from "@/app/stores/task"
 import {
   formatDateTime,
   formatRemainingTime,
-  queueStateToStep
+  isLeaseActive,
+  parseTaskTime
 } from "@/entities/task/types"
 
 const taskStore = useTaskStore()
@@ -44,7 +46,9 @@ onMounted(load)
 
 const current = computed(() => {
   const item = queueStore.items.find(
-    (entry) => entry.state === "RUNNING" || entry.state === "CLAIMED"
+    (entry) =>
+      (entry.state === "RUNNING" || entry.state === "CLAIMED") &&
+      isLeaseActive(entry)
   )
   if (!item) return { task: null, item: null }
   return {
@@ -55,10 +59,14 @@ const current = computed(() => {
 
 const upcomingTasks = computed(() =>
   [...taskStore.tasks]
-    .filter((task) => Date.parse(task.available_time) >= Date.now())
+    .filter(
+      (task) =>
+        (parseTaskTime(task.available_time)?.getTime() ?? 0) >= Date.now()
+    )
     .sort(
       (a, b) =>
-        Date.parse(a.available_time) - Date.parse(b.available_time)
+        (parseTaskTime(a.available_time)?.getTime() ?? 0) -
+        (parseTaskTime(b.available_time)?.getTime() ?? 0)
     )
     .slice(0, 6)
 )
@@ -82,7 +90,7 @@ function exceptionColor(level: string): string {
 }
 
 const resourceStatuses = computed(() => {
-  const workerOnline = systemStore.workerHeartbeat === "ok"
+  const workerOnline = systemStore.isWorkerOnline()
   const platformStatus = (key: string, label: string) => {
     const session = sessionStore.sessions[key]
     const online = session?.status === "logged_in"
@@ -135,7 +143,7 @@ const resourceStatuses = computed(() => {
           :task="current.task"
           :queue-item="current.item"
           :loading="queueStore.loading"
-          :current-step="queueStateToStep(current.item?.state)"
+          :current-step="null"
         />
       </div>
 
@@ -160,7 +168,9 @@ const resourceStatuses = computed(() => {
             <li v-for="task in upcomingTasks" :key="task.id" class="upcoming-item">
               <div class="upcoming-item__main">
                 <span class="upcoming-item__drama">{{ task.drama_name }}</span>
-                <span class="upcoming-item__platform">{{ task.platform }}</span>
+                <span class="upcoming-item__platform">
+                  {{ getPlatformLabel(task.platform) }}
+                </span>
               </div>
               <div class="upcoming-item__meta">
                 <span>{{ formatDateTime(task.available_time) }}</span>

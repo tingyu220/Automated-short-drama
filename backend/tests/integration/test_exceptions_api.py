@@ -15,6 +15,7 @@ from backend.domain.execution.execution_event import EventLevel
 from backend.domain.tasks.drama_task import TaskStatus
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.models.execution import ExecutionEventRecord
+from backend.infrastructure.database.models.execution import ExecutionArtifactRecord
 from backend.infrastructure.database.models.task import DramaTaskRecord
 from backend.interfaces.api.main import create_app
 
@@ -110,11 +111,55 @@ class TestExceptionsApi:
         assert data[0]["task_id"] == normal_task_id
         assert data[0]["level"] == EventLevel.ERROR
         assert data[0]["message"] == "提交失败"
+        assert data[0]["step"] == "步骤执行"
 
         assert data[1]["id"] == review_task_id
         assert data[1]["task_id"] == review_task_id
         assert data[1]["level"] == TaskStatus.MANUAL_REVIEW
         assert data[1]["message"] == "任务进入人工复核"
+        assert data[1]["step"] == "人工复核"
+
+    def test_exception_includes_screenshot_paths(
+        self, client, session_factory
+    ):
+        """异常详情带任务最近截图路径。"""
+        task_id = str(uuid.uuid4())
+        with session_factory() as session:
+            session.add(
+                DramaTaskRecord(
+                    id=task_id,
+                    drama_name="截图剧",
+                    platform="TOMATO",
+                    available_time=datetime(2026, 8, 6, 12, 0, 0),
+                    status=TaskStatus.RUNNING,
+                    updated_at=datetime(2026, 8, 6, 9, 0, 0),
+                )
+            )
+            session.flush()
+            session.add_all(
+                [
+                    ExecutionEventRecord(
+                        id=str(uuid.uuid4()),
+                        task_id=task_id,
+                        event_type="STEP_FAILED",
+                        level=EventLevel.ERROR,
+                        message="页面变化",
+                        occurred_at=datetime(2026, 8, 6, 10, 0, 0),
+                    ),
+                    ExecutionArtifactRecord(
+                        id=str(uuid.uuid4()),
+                        task_id=task_id,
+                        artifact_type="SCREENSHOT",
+                        path="data/logs/page.png",
+                        size_bytes=10,
+                        created_at=datetime(2026, 8, 6, 10, 1, 0),
+                    ),
+                ]
+            )
+            session.commit()
+
+        data = client.get("/api/exceptions").json()
+        assert data[0]["screenshots"] == ["data/logs/page.png"]
 
     def test_empty_exceptions(self, client):
         """无 ERROR 事件且无复核任务时返回空列表。"""

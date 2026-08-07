@@ -9,6 +9,7 @@ import {
   ElSwitch
 } from "element-plus"
 import type { RuleSet } from "@/app/stores/rule"
+import type { MaterialRuleRange } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
 
 export interface RuleDraftPayload {
@@ -67,6 +68,7 @@ const props = defineProps<{
   ruleSets: RuleSet[]
   busy?: boolean
   priceRules?: PriceRuleInput[]
+  materialRules?: MaterialRuleRange[]
   cids?: Record<string, unknown>[]
   adPresets?: Record<string, unknown>[]
   openPresets?: Record<string, unknown>[]
@@ -186,28 +188,24 @@ function pushDraft() {
   emit("update:priceRules", list)
 }
 
-const materialRows = ref<MaterialRuleRow[]>([
-  {
-    key: "n_leq_30",
-    min: 0,
-    max: 30,
-    strategy: "BASE_1_COPY_2",
-    baseGroupCount: 1,
-    copyCount: 2,
-    groupSizeCap: 30,
-    targetProjectCount: 3
+const materialRows = ref<MaterialRuleRow[]>([])
+
+watch(
+  () => props.materialRules,
+  (rows) => {
+    materialRows.value = (rows ?? []).map((row) => ({
+      key: row.key,
+      min: row.min_material_count,
+      max: row.max_material_count ?? 9999,
+      strategy: row.strategy,
+      baseGroupCount: row.base_group_count,
+      copyCount: row.copy_count,
+      groupSizeCap: row.group_size_cap,
+      targetProjectCount: row.target_project_count
+    }))
   },
-  {
-    key: "n_30_60",
-    min: 31,
-    max: 60,
-    strategy: "BASE_2_COPY_2",
-    baseGroupCount: 2,
-    copyCount: 2,
-    groupSizeCap: 30,
-    targetProjectCount: 3
-  }
-])
+  { immediate: true }
+)
 
 const mappingDraft = ref<MappingRow[]>([])
 
@@ -406,7 +404,14 @@ const accountStats = computed(() => {
 })
 
 function draftData(): Record<string, unknown> {
-  if (isPrice.value) return { ...draft.value }
+  if (isPrice.value) {
+    return {
+      price_rules:
+        props.priceRules && props.priceRules.length > 0
+          ? props.priceRules
+          : [{ ...draft.value }]
+    }
+  }
   if (isMaterial.value) return { ranges: materialRows.value }
   return {}
 }
@@ -837,7 +842,13 @@ function publish() {
       v-if="isPrice || isMaterial"
       class="rule-editor__actions"
     >
-      <ElButton :loading="busy" @click="saveDraft">保存草稿</ElButton>
+      <ElButton
+        :loading="busy"
+        :disabled="!ruleSetId"
+        @click="saveDraft"
+      >
+        保存草稿
+      </ElButton>
       <ElButton
         type="primary"
         :disabled="!ruleSetId"
@@ -847,6 +858,9 @@ function publish() {
         发布版本
       </ElButton>
     </footer>
+    <p v-if="isMaterial && !ruleSetId" class="rule-editor__note">
+      素材规则暂无对应规则集，当前仅展示生效规则，暂不可保存或发布。
+    </p>
   </section>
 </template>
 

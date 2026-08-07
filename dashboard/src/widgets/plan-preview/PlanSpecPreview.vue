@@ -41,66 +41,24 @@ const sections = computed(() => {
       fields: [
         { label: "任务名称", value: plan.taskName },
         { label: "剧名", value: plan.dramaName },
-        { label: "计划类型", value: plan.planType },
         { label: "平台", value: plan.platform },
         { label: "外部任务ID", value: plan.externalTaskId },
-        { label: "创建时间", value: plan.createdAt }
+        { label: "完成时间", value: plan.completedAt ?? "—" }
       ]
     },
     {
-      title: "账户与CID",
+      title: "台账明细",
       fields: [
-        { label: "账户数", value: plan.accountCount },
-        { label: "CID数", value: plan.cidCount }
+        { label: "飞书行", value: plan.feishuRow },
+        { label: "专辑ID", value: plan.albumId },
+        { label: "产品ID", value: plan.productId },
+        { label: "规则版本", value: plan.ruleVersion },
+        { label: "配置版本", value: plan.configVersion }
       ]
     },
     {
-      title: "推广内容",
-      fields: [
-        { label: "IAA 链接", value: "—" },
-        { label: "9.9 链接", value: "—" },
-        { label: "2.9 链接", value: "—" }
-      ]
-    },
-    {
-      title: "抖音号",
-      fields: [{ label: "抖音号", value: "—" }]
-    },
-    {
-      title: "预设",
-      fields: [
-        { label: "开户预设", value: "—" },
-        { label: "广告预设", value: "—" }
-      ]
-    },
-    {
-      title: "产品",
-      fields: [
-        { label: "产品库", value: "—" },
-        { label: "专辑ID", value: "—" }
-      ]
-    },
-    {
-      title: "素材分组",
-      fields: [
-        { label: "素材数", value: plan.materialCount },
-        { label: "素材组数", value: plan.materialGroupCount }
-      ]
-    },
-    {
-      title: "项目数",
-      fields: [{ label: "预计项目数", value: plan.expectedProjectCount }]
-    },
-    {
-      title: "任务名称",
-      fields: [{ label: "任务名称", value: plan.taskName }]
-    },
-    {
-      title: "校验结果",
-      fields: [
-        { label: "校验状态", value: status.label },
-        { label: "提交状态", value: plan.submitStatus }
-      ]
+      title: "状态",
+      fields: [{ label: "最终状态", value: status.label }]
     }
   ]
   return groups

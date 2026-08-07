@@ -25,8 +25,31 @@ const items: Array<{ action: TaskAction; label: string; danger: boolean }> = [
   { action: "cancel", label: "取消任务", danger: true }
 ]
 
+const TERMINAL_STATES = ["COMPLETED", "CANCELLED"]
+const ACTIVE_STATES = ["WAITING_TIME", "QUEUED", "CLAIMED", "RUNNING"]
+const RETRYABLE_STATES = ["RETRY_WAIT", "MANUAL_REVIEW", "FAILED"]
+
 const available = computed(() =>
-  items.filter((item) => !props.disabled.includes(item.action))
+  items.filter((item) => {
+    if (props.disabled.includes(item.action)) return false
+    const state = props.task.queue_state
+    if (item.action === "manual_enqueue") {
+      return !state || TERMINAL_STATES.includes(state)
+    }
+    if (item.action === "pause") {
+      return ACTIVE_STATES.includes(state ?? "")
+    }
+    if (item.action === "resume") {
+      return state === "PAUSED"
+    }
+    if (item.action === "retry") {
+      return RETRYABLE_STATES.includes(state ?? "")
+    }
+    if (item.action === "cancel") {
+      return Boolean(state) && !TERMINAL_STATES.includes(state ?? "")
+    }
+    return true
+  })
 )
 
 function handleCommand(command: string | number | object) {

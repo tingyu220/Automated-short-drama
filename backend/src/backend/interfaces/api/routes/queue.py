@@ -19,6 +19,8 @@ from backend.interfaces.api.schemas import QueueItemView
 
 router = APIRouter(tags=["queue"])
 
+_TERMINAL_STATES = frozenset({"COMPLETED", "CANCELLED"})
+
 
 def get_db() -> Generator[Session, None, None]:
     """FastAPI 数据库会话依赖。"""
@@ -57,11 +59,21 @@ def _repos(db: Session) -> tuple[SqlAlchemyQueueRepository, SqlAlchemyTaskReposi
 @router.get("/queue", response_model=list[QueueItemView])
 def list_queue(
     state: str | None = Query(default=None),
+    include_terminal: bool = Query(
+        default=False, description="是否包含已完成/已取消的终态项"
+    ),
     db: Session = Depends(get_db),
 ):
     """列出队列项，可按 state 过滤。"""
     queue_repo = SqlAlchemyQueueRepository(db)
-    items = queue_repo.list_by_state(state) if state else queue_repo.list_all()
+    if state:
+        items = queue_repo.list_by_state(state)
+    else:
+        items = queue_repo.list_all()
+        if not include_terminal:
+            items = [
+                item for item in items if item.state not in _TERMINAL_STATES
+            ]
     items.sort(key=lambda item: (-item.priority, item.available_at, item.id))
     return [QueueItemView.model_validate(item) for item in items]
 

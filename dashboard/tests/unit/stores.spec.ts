@@ -184,18 +184,13 @@ describe("usePlanStore", () => {
         platform: "番茄",
         status: "COMPLETED",
         completedAt: "2026-08-06T10:00:00",
+        feishuRow: "—",
+        albumId: "—",
+        productId: "—",
         taskName: "—",
-        planType: "—",
-        accountCount: "—",
-        cidCount: "—",
-        materialCount: "—",
-        materialGroupCount: "—",
-        expectedProjectCount: "—",
         ruleVersion: "—",
-        validationStatus: "—",
-        submitStatus: "—",
-        externalTaskId: "—",
-        createdAt: "2026-08-06T10:00:00"
+        configVersion: "—",
+        externalTaskId: "—"
       }
     ])
   })
@@ -355,7 +350,13 @@ describe("useExceptionStore", () => {
         category_label: "需要重新登录",
         risk: "high",
         risk_label: "高风险",
-        risk_color: "var(--color-status-failed)"
+        risk_color: "var(--color-status-failed)",
+        suggested_steps: [
+          "确认对应平台账号",
+          "在浏览器完成登录",
+          "登录后重新检测"
+        ],
+        screenshots: null
       }
     ])
     expect(store.loading).toBe(false)

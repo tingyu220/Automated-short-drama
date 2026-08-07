@@ -16,10 +16,12 @@ from backend.infrastructure.database.repositories.rule_repository import (
 )
 from backend.infrastructure.database.session import get_session
 from backend.interfaces.api.schemas import (
+    MaterialRuleRangeView,
     RuleSetView,
     RuleVersionView,
     SimulationOutputView,
     SimulationResultView,
+    TemplatePriceRuleView,
 )
 
 router = APIRouter(tags=["rules"])
@@ -60,6 +62,20 @@ def list_rules(db: Session = Depends(get_db)):
     return [RuleSetView.model_validate(rule_set) for rule_set in rule_sets]
 
 
+@router.get("/rules/price-rules", response_model=list[TemplatePriceRuleView])
+def list_price_rules(db: Session = Depends(get_db)):
+    """返回当前生效的 IAP 模板价格规则。"""
+    rules = SqlAlchemyPriceRuleRepository(db).list_template_price_rules()
+    return [TemplatePriceRuleView.model_validate(rule) for rule in rules]
+
+
+@router.get("/rules/material-rules", response_model=list[MaterialRuleRangeView])
+def list_material_rules(db: Session = Depends(get_db)):
+    """返回当前生效的素材数量区间规则。"""
+    ranges = SqlAlchemyMaterialRuleRepository(db).list_material_rule_ranges()
+    return [MaterialRuleRangeView.model_validate(item) for item in ranges]
+
+
 @router.get("/rules/{rule_set_id}/versions", response_model=list[RuleVersionView])
 def list_rule_versions(rule_set_id: str, db: Session = Depends(get_db)):
     """返回规则集版本列表，按创建时间倒序。"""
@@ -98,8 +114,13 @@ def save_rule_draft(
 def publish_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
     """发布最新待发布版本并写入审计日志。"""
     rule_repo = _require_rule_set(db, rule_set_id)
+    price_repo = SqlAlchemyPriceRuleRepository(db)
+    material_repo = SqlAlchemyMaterialRuleRepository(db)
     version = rule_service.publish_version(
         rule_repo, rule_set_id, actor="dashboard"
+    )
+    rule_service.apply_published_payload(
+        price_repo, material_repo, version.payload_json
     )
     return RuleVersionView.model_validate(version)
 

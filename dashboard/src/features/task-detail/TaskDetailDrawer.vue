@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { ref } from "vue"
 import { ElDrawer, ElTabPane, ElTabs } from "element-plus"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
-import LinkSourceCard from "@/widgets/link-source/LinkSourceCard.vue"
-import { getStatusColor, getStatusLabel } from "@/shared/utils/status"
+import {
+  getPlatformLabel,
+  getStatusColor,
+  getStatusLabel
+} from "@/shared/utils/status"
 import {
   formatDateTime,
-  formatDuration,
-  WORKFLOW_STEPS,
-  type PromotionLink,
   type TaskView,
   type WorkflowRunItem
 } from "@/entities/task/types"
@@ -19,12 +19,10 @@ const props = withDefaults(
     open: boolean
     task: TaskView | null
     timeline?: WorkflowRunItem[]
-    links?: PromotionLink[]
   }>(),
   {
     task: null,
-    timeline: () => [],
-    links: () => []
+    timeline: () => []
   }
 )
 
@@ -34,41 +32,16 @@ const emit = defineEmits<{
 
 const activeTab = ref("overview")
 
-const linkTabs = computed<PromotionLink[]>(() => {
-  const base: Array<{
-    key: PromotionLink["key"]
-    label: string
-    field: string | null | undefined
-  }> = [
-    { key: "iaa", label: "IAA", field: props.task?.iaa },
-    { key: "iap_9_9", label: "9.9", field: props.task?.price_9_9 },
-    { key: "iap_2_9", label: "2.9", field: props.task?.price_2_9 }
-  ]
-  return base.map(({ key, label, field }) => {
-    const provided = props.links.find((link) => link.key === key)
-    if (provided) return provided
-    return {
-      key,
-      label,
-      status: field ?? "",
-      source: "—",
-      entry: "—",
-      method: "—",
-      url: ""
-    }
-  })
-})
-
-const stageLabel = computed(() => {
-  if (!props.task) return "—"
-  if (props.task.current_step) {
-    const step = WORKFLOW_STEPS.find(
-      (item) => item.key === props.task?.current_step
-    )
-    if (step) return step.label
+function levelMeta(level: string): { label: string; color: string } {
+  const normalized = level.toUpperCase()
+  if (normalized === "ERROR" || normalized === "FAILED") {
+    return { label: "失败", color: "var(--color-status-failed)" }
   }
-  return getStatusLabel(props.task.queue_state ?? props.task.status)
-})
+  if (normalized === "WARN" || normalized === "WARNING") {
+    return { label: "警告", color: "var(--color-status-warning)" }
+  }
+  return { label: "成功", color: "var(--color-status-success)" }
+}
 
 function closeDrawer() {
   emit("update:open", false)
@@ -96,15 +69,15 @@ function closeDrawer() {
             </div>
             <div>
               <dt>平台</dt>
-              <dd>{{ task.platform }}</dd>
+              <dd>{{ getPlatformLabel(task.platform) }}</dd>
             </div>
             <div>
               <dt>投放时间</dt>
               <dd>{{ formatDateTime(task.available_time) }}</dd>
             </div>
             <div>
-              <dt>当前阶段</dt>
-              <dd>{{ stageLabel }}</dd>
+              <dt>队列状态</dt>
+              <dd>{{ task.queue_state ? getStatusLabel(task.queue_state) : "—" }}</dd>
             </div>
             <div>
               <dt>任务状态</dt>
@@ -116,22 +89,6 @@ function closeDrawer() {
             <div>
               <dt>最后更新时间</dt>
               <dd>{{ formatDateTime(task.updated_at) }}</dd>
-            </div>
-            <div>
-              <dt>专辑ID</dt>
-              <dd class="task-detail__mono">{{ task.album_id ?? "—" }}</dd>
-            </div>
-            <div>
-              <dt>产品库</dt>
-              <dd class="task-detail__mono">{{ task.product_library ?? "—" }}</dd>
-            </div>
-            <div>
-              <dt>PlanSpec</dt>
-              <dd class="task-detail__mono">{{ task.plan_spec ?? "未生成" }}</dd>
-            </div>
-            <div>
-              <dt>计划状态</dt>
-              <dd>{{ task.plan_status ? getStatusLabel(task.plan_status) : "—" }}</dd>
             </div>
           </dl>
         </ElTabPane>
@@ -145,13 +102,13 @@ function closeDrawer() {
           <ol v-else class="task-detail__timeline">
             <li v-for="(item, index) in timeline" :key="index" class="task-detail__timeline-item">
               <span class="task-detail__timeline-dot">
-                <StatusDot :color="getStatusColor(item.status)" />
+                <StatusDot :color="levelMeta(item.status).color" />
               </span>
               <div class="task-detail__timeline-body">
                 <div class="task-detail__timeline-head">
                   <span class="task-detail__timeline-step">{{ item.step }}</span>
                   <span class="task-detail__timeline-status">
-                    {{ getStatusLabel(item.status) }}
+                    {{ levelMeta(item.status).label }}
                   </span>
                 </div>
                 <p class="task-detail__timeline-meta">
@@ -163,47 +120,6 @@ function closeDrawer() {
               </div>
             </li>
           </ol>
-        </ElTabPane>
-
-        <ElTabPane label="推广链接" name="links">
-          <div class="task-detail__links">
-            <LinkSourceCard v-for="link in linkTabs" :key="link.key" :link="link" />
-          </div>
-        </ElTabPane>
-
-        <ElTabPane label="账户" name="accounts">
-          <EmptyState
-            title="账户数据占位"
-            description="飞书账户实时数据将在账户功能阶段接入"
-          />
-        </ElTabPane>
-
-        <ElTabPane label="外部资产" name="assets">
-          <EmptyState
-            title="外部资产占位"
-            description="素材、截图与外部任务资产将在后续阶段接入"
-          />
-        </ElTabPane>
-
-        <ElTabPane label="PlanSpec" name="planspec">
-          <EmptyState
-            title="PlanSpec 占位"
-            description="结构化计划将在计划管理阶段展示"
-          />
-        </ElTabPane>
-
-        <ElTabPane label="异常" name="exceptions">
-          <EmptyState
-            title="暂无异常"
-            description="任务异常将在此集中展示"
-          />
-        </ElTabPane>
-
-        <ElTabPane label="执行记录" name="records">
-          <EmptyState
-            title="执行记录占位"
-            description="业务台账与操作审计将在系统记录阶段接入"
-          />
         </ElTabPane>
       </ElTabs>
     </div>
@@ -245,10 +161,6 @@ function closeDrawer() {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.task-detail__mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .task-detail__timeline {
@@ -326,10 +238,4 @@ function closeDrawer() {
   font-size: var(--font-size-caption);
 }
 
-.task-detail__links {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 8px 4px;
-}
 </style>

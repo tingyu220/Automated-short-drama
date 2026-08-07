@@ -1,5 +1,14 @@
 /** 任务领域类型与展示辅助函数 */
 
+import {
+  formatDateTime,
+  formatDuration,
+  formatRemainingTime,
+  parseDateTimeUtc
+} from "@/shared/utils/format"
+
+export { formatDateTime, formatDuration, formatRemainingTime }
+
 export type WorkflowNodeStatus =
   | "done"
   | "current"
@@ -161,36 +170,19 @@ export function queueStateToStep(state?: string | null): string | null {
   return QUEUE_STATE_STEP_MAP[state.toUpperCase()] ?? null
 }
 
-export function formatDateTime(value?: string | null): string {
-  if (!value) return "—"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+export function parseTaskTime(value?: string | null): Date | null {
+  return parseDateTimeUtc(value)
 }
 
-export function formatDuration(start?: string | null, end?: string | null): string {
-  const startMs = start ? Date.parse(start) : Number.NaN
-  if (Number.isNaN(startMs)) return "—"
-  const endMs = end ? Date.parse(end) : Date.now()
-  const diff = Math.max(0, endMs - startMs)
-  const minutes = Math.floor(diff / 60000)
-  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-  if (minutes > 0) return `${minutes}m`
-  return `${Math.max(1, Math.floor(diff / 1000))}s`
-}
-
-export function formatRemainingTime(target?: string | null): string {
-  if (!target) return "—"
-  const targetMs = Date.parse(target)
-  if (Number.isNaN(targetMs)) return "—"
-  const diff = targetMs - Date.now()
-  if (diff <= 0) return "已到时间"
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 60) return `${minutes} 分钟`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小时 ${minutes % 60} 分钟`
-  return `${Math.floor(hours / 24)} 天`
+export function isLeaseActive(item?: {
+  lease_until?: string | null
+  state?: string | null
+} | null): boolean {
+  if (!item) return false
+  if (item.state !== "RUNNING" && item.state !== "CLAIMED") return false
+  if (!item.lease_until) return false
+  const leaseEnd = parseDateTimeUtc(item.lease_until)
+  return leaseEnd !== null && leaseEnd.getTime() > Date.now()
 }
 
 const LINK_STATUS_META: Record<string, { label: string; color: string }> = {

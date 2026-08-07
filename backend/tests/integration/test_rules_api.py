@@ -144,3 +144,77 @@ class TestRulesApi:
         ]
         assert data["outputs"][0]["distance"] == pytest.approx(0.1)
         assert data["outputs"][1]["selection_reason"] == "NO_MATCH"
+
+    def test_list_price_and_material_rules(self, client):
+        """价格/素材规则读取接口返回当前生效规则。"""
+        price_response = client.get("/api/rules/price-rules")
+        assert price_response.status_code == 200
+        price_data = price_response.json()
+        assert {item["key"] for item in price_data} == {"iap_2_9", "iap_9_9"}
+        assert {
+            "id",
+            "key",
+            "target_price",
+            "min_price",
+            "max_price",
+            "same_distance_strategy",
+            "enabled",
+        } <= set(price_data[0])
+
+        material_response = client.get("/api/rules/material-rules")
+        assert material_response.status_code == 200
+        material_data = material_response.json()
+        assert len(material_data) == 5
+        assert {
+            "id",
+            "key",
+            "min_material_count",
+            "max_material_count",
+            "strategy",
+            "base_group_count",
+            "copy_count",
+            "group_size_cap",
+            "target_project_count",
+        } <= set(material_data[0])
+
+    def test_publish_applies_price_payload_to_execution_table(self, client):
+        """发布价格草稿后，模拟接口使用新价格区间。"""
+        rule_sets = client.get("/api/rules").json()
+        rule_id = next(
+            row["id"] for row in rule_sets if row["key"] == "iap_price_2_9"
+        )
+        payload = {
+            "price_rules": [
+                {
+                    "key": "iap_2_9",
+                    "targetPrice": 3.5,
+                    "minPrice": 3.0,
+                    "maxPrice": 5.0,
+                    "sameDistanceStrategy": "HIGHER_PRICE_FIRST",
+                    "enabled": True,
+                }
+            ]
+        }
+        saved = client.post(
+            f"/api/rules/{rule_id}/draft", json={"payload": payload}
+        )
+        assert saved.status_code == 200
+        validated = client.post(f"/api/rules/{rule_id}/validate")
+        assert validated.status_code == 200
+        published = client.post(f"/api/rules/{rule_id}/publish")
+        assert published.status_code == 200
+
+        price_rules = client.get("/api/rules/price-rules").json()
+        updated = next(
+            item for item in price_rules if item["key"] == "iap_2_9"
+        )
+        assert updated["target_price"] == 3.5
+        assert updated["min_price"] == 3.0
+
+        simulation = client.post(
+            "/api/rules/simulate-price",
+            json={"candidates": [3.2]},
+        )
+        output = simulation.json()["outputs"][0]
+        assert output["matched_rule_key"] == "iap_2_9"
+        assert output["distance"] == pytest.approx(0.3)

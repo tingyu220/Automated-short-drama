@@ -38,3 +38,16 @@ export function getStatusColor(status: string): string {
     "var(--color-status-pending)"
   )
 }
+
+const PLATFORM_LABEL_MAP: Record<string, string> = {
+  tomato: "番茄",
+  jubian: "剧变",
+  feishu: "飞书",
+  delivery: "投放系统",
+  ocean: "巨量"
+}
+
+export function getPlatformLabel(platform?: string | null): string {
+  if (!platform) return "—"
+  return PLATFORM_LABEL_MAP[platform.trim().toLowerCase()] ?? platform
+}

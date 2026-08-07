@@ -9,7 +9,7 @@ from datetime import datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from backend.domain.common.timezones import as_utc
+from backend.domain.common.timezones import SHANGHAI_TZ, as_utc
 from backend.domain.errors.domain_error import ConflictError, NotFoundError
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.domain.tasks.drama_task import DramaTask
@@ -62,7 +62,10 @@ def list_tasks(
     available_from = None
     available_to = None
     if date is not None:
-        available_from = datetime.combine(date, time.min, tzinfo=timezone.utc)
+        # 业务日界按东八区计算，落库时间为 naive UTC，因此转回 naive 后查询。
+        available_from = datetime.combine(
+            date, time.min, tzinfo=SHANGHAI_TZ
+        ).astimezone(timezone.utc).replace(tzinfo=None)
         available_to = available_from + timedelta(days=1)
 
     tasks = SqlAlchemyTaskRepository(db).list_by_filters(
