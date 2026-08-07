@@ -46,3 +46,32 @@ def test_import_storage_and_check(tmp_path):
     assert imported.status_code == 200
     assert checked.status_code == 200
     assert checked.json()["status"] == STATUS_LOGGED_IN
+
+
+def test_login_and_finish_endpoints(tmp_path):
+    """POST login/finish 委托登录管理器并返回运行状态。"""
+    class FakeLoginManager:
+        def start(self, platform: str) -> bool:
+            return True
+
+        def is_running(self, platform: str) -> bool:
+            return True
+
+        def finish(self, platform: str) -> bool:
+            return True
+
+    sessions_route._login_manager = FakeLoginManager()
+    app = create_app(dist_dir=None)
+    client = TestClient(app)
+
+    login = client.post("/api/sessions/tomato/login")
+    finish = client.post("/api/sessions/tomato/finish")
+
+    assert login.status_code == 200
+    assert login.json() == {
+        "platform": "tomato",
+        "started": True,
+        "running": True,
+    }
+    assert finish.status_code == 200
+    assert finish.json() == {"platform": "tomato", "finished": True}

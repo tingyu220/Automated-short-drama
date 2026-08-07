@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.application.services.session_service import SessionService
+from backend.application.services.session_login import SessionLoginManager
 
 router = APIRouter(tags=["sessions"])
 
@@ -17,6 +18,9 @@ class StorageImportBody(BaseModel):
 
 def _service() -> SessionService:
     return SessionService()
+
+
+_login_manager = SessionLoginManager()
 
 
 @router.get("/sessions")
@@ -44,3 +48,21 @@ def clear_session(platform: str):
     service = _service()
     service.clear(platform)
     return {"platform": platform, "cleared": True}
+
+
+@router.post("/sessions/{platform}/login")
+def start_login(platform: str):
+    """启动 Playwright 登录任务，打开浏览器完成登录并自动保存。"""
+    started = _login_manager.start(platform)
+    return {
+        "platform": platform,
+        "started": started,
+        "running": _login_manager.is_running(platform),
+    }
+
+
+@router.post("/sessions/{platform}/finish")
+def finish_login(platform: str):
+    """用户确认已完成登录，立即保存当前 Session。"""
+    finished = _login_manager.finish(platform)
+    return {"platform": platform, "finished": finished}
