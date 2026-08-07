@@ -10,15 +10,35 @@ import RulePublishPanel from "@/features/rule-publish/RulePublishPanel.vue"
 import RuleSimulator from "@/widgets/rule-simulator/RuleSimulator.vue"
 import PageHeader from "@/shared/ui/PageHeader.vue"
 import { useDeliveryConfigStore } from "@/app/stores/deliveryConfig"
+import { useSessionStore } from "@/app/stores/session"
 import { useRuleStore } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
 
 const ruleStore = useRuleStore()
 const deliveryConfigStore = useDeliveryConfigStore()
+const sessionStore = useSessionStore()
 
 const mappingProposal = computed(
   () => deliveryConfigStore.mappingProposal as unknown as MappingRow[]
 )
+
+const platformResources = computed(() => {
+  const sessions = sessionStore.sessions
+  const platforms: { key: string; label: string }[] = [
+    { key: "feishu", label: "飞书" },
+    { key: "tomato", label: "番茄" },
+    { key: "delivery", label: "投放系统" },
+    { key: "ocean", label: "巨量" }
+  ]
+  return platforms.map((item) => {
+    const session = sessions[item.key]
+    return {
+      platform: item.label,
+      status: session?.status === "logged_in" ? "已登录" : "未登录",
+      url: session?.login_url ?? "—"
+    }
+  })
+})
 
 const CATEGORIES = [
   { key: "link", label: "链接规则" },
@@ -91,6 +111,7 @@ async function load() {
   await loadVersions()
   await deliveryConfigStore.loadForCategory("cid")
   await deliveryConfigStore.loadForCategory(selectedCategory.value)
+  await sessionStore.fetchSessions()
 }
 
 onMounted(load)
@@ -189,11 +210,13 @@ async function onSaveMapping(rows: MappingRow[]) {
           :rule-sets="ruleStore.ruleSets"
           :busy="ruleStore.loading"
           :cids="deliveryConfigStore.cids"
+          :accounts="deliveryConfigStore.accounts"
           :ad-presets="deliveryConfigStore.adPresets"
           :open-presets="deliveryConfigStore.openPresets"
           :mapping-proposal="mappingProposal"
           :delivery-loading="deliveryConfigStore.loading"
           :saving="deliveryConfigStore.saving"
+          :platform-resources="platformResources"
           v-model:price-rules="priceRules"
           @save-draft="onSaveDraft"
           @publish="(payload) => onPublish(payload.ruleSetId)"

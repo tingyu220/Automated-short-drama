@@ -48,6 +48,12 @@ export interface MappingRow {
   open_preset_candidates?: string[]
 }
 
+interface PlatformResource {
+  platform: string
+  status: string
+  url: string
+}
+
 const props = defineProps<{
   category: string
   ruleSets: RuleSet[]
@@ -60,6 +66,7 @@ const props = defineProps<{
   mappingProposal?: MappingRow[]
   deliveryLoading?: boolean
   saving?: boolean
+  platformResources?: PlatformResource[]
 }>()
 
 const emit = defineEmits<{
@@ -216,8 +223,89 @@ const isCid = computed(() => props.category === "cid")
 const isAdPreset = computed(() => props.category === "adPreset")
 const isOpenPreset = computed(() => props.category === "openPreset")
 const isDouyin = computed(() => props.category === "douyin")
+const isLink = computed(() => props.category === "link")
+const isAccount = computed(() => props.category === "account")
+const isPlatform = computed(() => props.category === "platform")
+const isNaming = computed(() => props.category === "naming")
+const isRuntime = computed(() => props.category === "runtime")
 const isVersion = computed(() => props.category === "version")
 const reservedItems = computed(() => RESERVED_ITEMS[props.category] ?? [])
+
+const linkRuleRows = [
+  {
+    name: "IAA 选集阈值",
+    value: "总集数超过 50 集时选第 2 集",
+    source: "默认规则 iaa_episode_threshold"
+  },
+  {
+    name: "IAP 2.9 模板",
+    value: "目标 2.9 元 / 最低 2.6 元 / 最高 5.0 元",
+    source: "默认规则 iap_price_2_9"
+  },
+  {
+    name: "IAP 9.9 模板",
+    value: "目标 9.9 元 / 最低 8.8 元 / 最高 13.8 元",
+    source: "默认规则 iap_price_9_9"
+  },
+  {
+    name: "同距离策略",
+    value: "同距离优先高价",
+    source: "HIGHER_PRICE_FIRST"
+  }
+]
+
+const runtimeRows = [
+  { name: "剧目扫描间隔", value: "3600 秒（每小时）" },
+  { name: "登录等待超时", value: "600 秒（10 分钟）" },
+  { name: "价格档位", value: "2.9 / 9.9 两档" },
+  {
+    name: "素材分组区间",
+    value: "0-30 / 31-60 两档，测试户另计"
+  }
+]
+
+const douyinAccounts = computed(() => {
+  const values = new Set<string>()
+  for (const row of mappingDraft.value) {
+    const value = String(row.douyin_account || "").trim()
+    if (value) values.add(value)
+  }
+  return [...values]
+})
+
+const namingTemplates = computed(() => {
+  const seen = new Set<string>()
+  const rows: { type: string; template: string }[] = []
+  for (const preset of props.adPresets ?? []) {
+    for (const key of ["project_name", "ad_name"] as const) {
+      const template = String(preset[key] ?? "").trim()
+      if (!template || seen.has(template)) continue
+      seen.add(template)
+      rows.push({
+        type: key === "project_name" ? "项目名模板" : "广告名模板",
+        template
+      })
+    }
+  }
+  return rows
+})
+
+const accountStats = computed(() => {
+  const accounts = props.accounts ?? []
+  const companies = new Set<string>()
+  const payTypes = new Map<string, number>()
+  for (const account of accounts) {
+    const company = String(account.oceanCompanyName || "").trim()
+    if (company) companies.add(company)
+    const pay = String(account.payType || "未知")
+    payTypes.set(pay, (payTypes.get(pay) ?? 0) + 1)
+  }
+  return {
+    count: accounts.length,
+    companies: companies.size,
+    payTypes: [...payTypes.entries()]
+  }
+})
 
 function draftData(): Record<string, unknown> {
   if (isPrice.value) return { ...draft.value }
@@ -544,20 +632,179 @@ function publish() {
     </template>
 
     <template v-else-if="isDouyin">
-      <p class="rule-editor__note">
-        投放系统页面未直接提供抖音号字段；当前可查看账户池，
-        待确认抖音号来源后接入映射。
-      </p>
       <div class="rule-editor__sync-line">
-        <span>账户 {{ accounts?.length ?? 0 }} 条</span>
+        <span>抖音号 {{ douyinAccounts.length }} 个 / 账户池 {{ accountStats.count }} 条</span>
         <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div v-if="douyinAccounts.length" class="rule-editor__chip-list">
+        <span
+          v-for="item in douyinAccounts"
+          :key="item"
+          class="rule-editor__chip"
+        >
+          {{ item }}
+        </span>
+      </div>
+      <p class="rule-editor__note">
+        当前抖音号在 CID预设 分类中可直接修改，换号后在这里同步更新。
+      </p>
+    </template>
+
+    <template v-else-if="isLink">
+      <div class="rule-editor__detail-grid">
+        <div
+          v-for="row in linkRuleRows"
+          :key="row.name"
+          class="rule-editor__detail-item"
+        >
+          <span class="rule-editor__detail-label">{{ row.name }}</span>
+          <span class="rule-editor__detail-value">{{ row.value }}</span>
+          <span class="rule-editor__detail-source">{{ row.source }}</span>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="isAccount">
+      <div class="rule-editor__stats">
+        <div class="rule-editor__stat">
+          <span>账户总数</span>
+          <strong>{{ accountStats.count }}</strong>
+        </div>
+        <div class="rule-editor__stat">
+          <span>主体数</span>
+          <strong>{{ accountStats.companies }}</strong>
+        </div>
+        <div class="rule-editor__stat">
+          <span>变现类型</span>
+          <strong>
+            {{
+              accountStats.payTypes
+                .map(([type, count]) => `${type} ${count}`)
+                .join(" / ")
+            }}
+          </strong>
+        </div>
+      </div>
+      <div class="rule-editor__sync-line">
+        <span>账户池来自投放系统同步快照</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>账户名称</th>
+              <th>账户ID</th>
+              <th>CID</th>
+              <th>主体</th>
+              <th>变现</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in (accounts ?? []).slice(0, 30)"
+              :key="String(row.fiAdvertiserId)"
+            >
+              <td>{{ row.fiAdvertiserName }}</td>
+              <td>{{ row.fiAdvertiserId }}</td>
+              <td>{{ row.cid }}</td>
+              <td>{{ row.oceanCompanyName }}</td>
+              <td>{{ row.payType || "未知" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isPlatform">
+      <div class="rule-editor__sync-line">
+        <span>平台连接 {{ platformResources?.length ?? 0 }} 个</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>登录状态</th>
+              <th>地址</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in platformResources ?? []"
+              :key="row.platform"
+            >
+              <td>{{ row.platform }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ row.url }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isNaming">
+      <div class="rule-editor__sync-line">
+        <span>命名模板 {{ namingTemplates.length }} 条</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>类型</th>
+              <th>模板</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in namingTemplates" :key="row.template">
+              <td>{{ row.type }}</td>
+              <td class="rule-editor__template">{{ row.template }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isRuntime">
+      <div class="rule-editor__detail-grid">
+        <div
+          v-for="row in runtimeRows"
+          :key="row.name"
+          class="rule-editor__detail-item"
+        >
+          <span class="rule-editor__detail-label">{{ row.name }}</span>
+          <span class="rule-editor__detail-value">{{ row.value }}</span>
+        </div>
       </div>
     </template>
 
     <template v-else-if="isVersion">
-      <p class="rule-editor__note">
-        选择左侧规则分类后，在此查看对应规则集的草稿、校验与发布版本。
-      </p>
+      <div class="rule-editor__sync-line">
+        <span>规则集 {{ ruleSets.length }} 个</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>规则名称</th>
+              <th>Key</th>
+              <th>分类</th>
+              <th>状态</th>
+              <th>更新时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in ruleSets" :key="row.id">
+              <td>{{ row.name }}</td>
+              <td>{{ row.key }}</td>
+              <td>{{ row.category }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ row.updated_at }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
 
     <template v-else>
@@ -747,6 +994,83 @@ function publish() {
   line-height: 1.6;
 }
 
+.rule-editor__detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rule-editor__detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--color-bg-panel-secondary);
+  border-radius: var(--radius-card);
+}
+
+.rule-editor__detail-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.rule-editor__detail-value {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+}
+
+.rule-editor__detail-source {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.rule-editor__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rule-editor__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--color-bg-panel-secondary);
+  border-radius: var(--radius-card);
+}
+
+.rule-editor__stat span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.rule-editor__stat strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-module-title);
+  font-weight: 600;
+}
+
+.rule-editor__chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rule-editor__chip {
+  padding: 6px 12px;
+  color: var(--color-primary);
+  background: var(--color-primary-50);
+  border-radius: 999px;
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.rule-editor__template {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  word-break: break-all;
+}
+
 .rule-editor__actions {
   display: flex;
   justify-content: flex-end;
@@ -757,6 +1081,11 @@ function publish() {
 
 @media (max-width: 900px) {
   .rule-editor__form {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-editor__detail-grid,
+  .rule-editor__stats {
     grid-template-columns: 1fr;
   }
 }
