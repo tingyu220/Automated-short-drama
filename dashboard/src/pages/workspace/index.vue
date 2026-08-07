@@ -89,14 +89,16 @@ const resourceStatuses = computed(() => {
     return {
       label,
       value: online ? "已登录" : "未登录",
-      online
+      online,
+      loginUrl: session?.login_url ?? ""
     }
   }
   return [
     {
       label: "Automation Worker",
       value: workerOnline ? "在线" : "离线",
-      online: workerOnline
+      online: workerOnline,
+      loginUrl: ""
     },
     platformStatus("feishu", "飞书"),
     platformStatus("tomato", "番茄"),
@@ -215,6 +217,15 @@ const resourceStatuses = computed(() => {
               />
               <span class="resource-item__label">{{ item.label }}</span>
               <span class="resource-item__value">{{ item.value }}</span>
+              <a
+                v-if="!item.online && item.loginUrl"
+                class="resource-item__login"
+                :href="item.loginUrl"
+                target="_blank"
+                rel="noopener"
+              >
+                去登录
+              </a>
             </li>
           </ul>
         </section>
@@ -430,6 +441,17 @@ const resourceStatuses = computed(() => {
   color: var(--color-text-primary);
   font-size: var(--font-size-caption);
   font-weight: 500;
+}
+
+.resource-item__login {
+  color: var(--color-primary);
+  font-size: var(--font-size-caption);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.resource-item__login:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 1280px) {
