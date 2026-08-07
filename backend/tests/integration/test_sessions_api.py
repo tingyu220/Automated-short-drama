@@ -39,7 +39,17 @@ def test_import_storage_and_check(tmp_path):
 
     imported = client.post(
         "/api/sessions/tomato/storage",
-        json={"storage_state": {"cookies": [{"name": "session", "value": "x"}]}},
+        json={
+            "storage_state": {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "x",
+                        "domain": ".changdupingtai.com",
+                    }
+                ]
+            }
+        },
     )
     checked = client.post("/api/sessions/tomato/check")
 

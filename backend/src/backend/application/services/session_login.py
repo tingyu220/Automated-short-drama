@@ -10,6 +10,7 @@ from pathlib import Path
 from backend.application.services.session_service import (
     PLATFORM_LOGIN_URLS,
     SessionService,
+    has_platform_auth_cookie,
 )
 from backend.infrastructure.config.settings import Settings
 
@@ -23,6 +24,10 @@ _TOMATO_LOGGED_IN_SELECTORS = (
     "a[href*='/sale/novel/list']",
 )
 _LOGIN_WAIT_SECONDS = 600
+_LOGIN_PAGE_TEXT: dict[str, tuple[str, ...]] = {
+    "delivery": ("请登录", "未登录", "飞书授权登录"),
+    "ocean": ("请登录", "未登录"),
+}
 
 
 @dataclass
@@ -92,7 +97,7 @@ class SessionLoginManager:
                 )
                 try:
                     ok = _login_page(platform, context, task.stop)
-                    if ok or task.stop.is_set():
+                    if ok:
                         _save_storage(context, self.storage_path(platform))
                 finally:
                     context.close()
@@ -103,7 +108,7 @@ class SessionLoginManager:
 
 
 def _login_page(platform: str, context, stop: threading.Event) -> bool:
-    """按平台执行登录；stop 触发时返回 True 以便保存。"""
+    """按平台执行登录；仅在校验通过后返回 True。"""
     if platform == "tomato":
         return _login_tomato(context, stop)
     return _login_generic(platform, context, stop)
@@ -125,8 +130,10 @@ def _login_tomato(context, stop: threading.Event) -> bool:
 
     deadline = time.time() + _LOGIN_WAIT_SECONDS
     while time.time() < deadline:
-        if _tomato_logged_in(page) or stop.is_set():
+        if _tomato_logged_in(page):
             return True
+        if stop.is_set():
+            return False
         time.sleep(2)
     return False
 
@@ -173,7 +180,7 @@ def _tomato_logged_in(page) -> bool:
 
 
 def _login_generic(platform: str, context, stop: threading.Event) -> bool:
-    """投放/巨量通用登录：URL 离开登录页或新增 Cookie 即保存。"""
+    """投放/巨量通用登录：候选信号触发后需通过页面回访校验。"""
     page = context.new_page()
     page.goto(PLATFORM_LOGIN_URLS[platform], wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
@@ -181,7 +188,7 @@ def _login_generic(platform: str, context, stop: threading.Event) -> bool:
     deadline = time.time() + _LOGIN_WAIT_SECONDS
     while time.time() < deadline:
         if stop.is_set():
-            return True
+            return _verify_generic_logged_in(platform, context)
         current_keys = _cookie_keys(context)
         url = page.url.lower()
         if current_keys - initial_keys or (
@@ -189,9 +196,38 @@ def _login_generic(platform: str, context, stop: threading.Event) -> bool:
             and "login" not in url
             and "login" in PLATFORM_LOGIN_URLS[platform]
         ):
-            return True
+            if _verify_generic_logged_in(platform, context):
+                return True
+            time.sleep(2)
         time.sleep(2)
     return False
+
+
+def _verify_generic_logged_in(platform: str, context) -> bool:
+    """认证 Cookie 存在且回访页面未跳登录页才视为已登录。"""
+    if not has_platform_auth_cookie(context.cookies(), platform):
+        return False
+    probe = context.new_page()
+    try:
+        probe.goto(
+            PLATFORM_LOGIN_URLS[platform],
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        probe.wait_for_timeout(2000)
+        url = probe.url.lower()
+        if "login" in url or "auth" in url or "feishu.cn" in url:
+            return False
+        body = probe.inner_text("body") or ""
+        markers = _LOGIN_PAGE_TEXT.get(platform, ())
+        if any(marker in body for marker in markers):
+            return False
+        return True
+    except Exception:
+        logger.exception("平台登录校验失败: platform=%s", platform)
+        return False
+    finally:
+        probe.close()
 
 
 def _cookie_keys(context) -> set[tuple[str, str]]:

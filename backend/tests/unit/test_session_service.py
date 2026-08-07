@@ -87,7 +87,15 @@ class TestBrowserPlatforms:
         service = SessionService(sessions_dir=tmp_path)
         path = service.import_storage(
             "tomato",
-            {"cookies": [{"name": "session", "value": "x"}]},
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "x",
+                        "domain": ".changdupingtai.com",
+                    }
+                ]
+            },
         )
 
         assert path.exists()
@@ -99,7 +107,16 @@ class TestBrowserPlatforms:
         service = SessionService(sessions_dir=tmp_path)
         service.import_storage(
             "tomato",
-            {"cookies": [{"name": "session", "expires": time.time() - 100}]},
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "x",
+                        "domain": ".changdupingtai.com",
+                        "expires": time.time() - 100,
+                    }
+                ]
+            },
         )
 
         status = service.check("tomato")
@@ -111,10 +128,64 @@ class TestBrowserPlatforms:
         service = SessionService(sessions_dir=tmp_path)
         service.import_storage(
             "tomato",
-            {"cookies": [{"name": "session"}]},
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "x",
+                        "domain": ".changdupingtai.com",
+                    }
+                ]
+            },
         )
 
         assert service.check("tomato").status == STATUS_LOGGED_IN
+
+    def test_delivery_without_admin_token_needs_login(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "delivery",
+            {"cookies": [{"name": "passport_trace_id", "domain": ".feishu.cn"}]},
+        )
+
+        status = service.check("delivery")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert "缺少平台认证凭证" in status.message
+
+    def test_ocean_without_session_cookie_needs_login(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "ocean",
+            {
+                "cookies": [
+                    {"name": "passport_csrf_token", "domain": ".oceanengine.com"},
+                    {"name": "ttwid", "domain": ".oceanengine.com"},
+                ]
+            },
+        )
+
+        status = service.check("ocean")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert "缺少平台认证凭证" in status.message
+
+    def test_delivery_admin_token_logged_in(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "delivery",
+            {
+                "cookies": [
+                    {
+                        "name": "Admin-Token",
+                        "value": "jwt",
+                        "domain": "web.tjhaozew.top",
+                    }
+                ]
+            },
+        )
+
+        assert service.check("delivery").status == STATUS_LOGGED_IN
 
     def test_cookies_for_returns_stored_cookies(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)

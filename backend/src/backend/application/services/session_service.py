@@ -26,6 +26,19 @@ PLATFORM_LOGIN_URLS: dict[str, str] = {
     "ocean": "https://business.oceanengine.com",
 }
 
+AUTH_COOKIE_NAMES: dict[str, set[str]] = {
+    "tomato": {"sessionid", "sid_guard", "username", "nickName"},
+    "delivery": {"Admin-Token"},
+    "ocean": {
+        "sessionid",
+        "sessionid_ss",
+        "sid_guard",
+        "sid_tt",
+        "uid_tt",
+        "uid_tt_ss",
+    },
+}
+
 
 @dataclass(frozen=True)
 class SessionStatus:
@@ -146,7 +159,7 @@ class SessionService:
             )
 
     def _check_browser_session(self, platform: str) -> SessionStatus:
-        """网页平台登录态：storage.json 存在且含 Cookie 视为已持久化。"""
+        """网页平台登录态：存在未过期平台认证 Cookie 才算已登录。"""
         path = self.storage_path(platform)
         storage = self._load_storage(platform)
         cookies = storage.get("cookies") or []
@@ -156,20 +169,27 @@ class SessionService:
             for cookie in cookies
             if cookie.get("expires") is None or float(cookie["expires"]) >= now
         ]
-        if path.exists() and unexpired:
+        if path.exists() and unexpired and has_platform_auth_cookie(
+            unexpired, platform
+        ):
             return SessionStatus(
                 platform=platform,
                 status=STATUS_LOGGED_IN,
                 login_url=PLATFORM_LOGIN_URLS[platform],
-                message="本地 Session 已持久化",
+                message="本地 Session 已持久化并校验",
                 storage_path=str(path),
             )
         if path.exists() and cookies:
+            has_auth = has_platform_auth_cookie(cookies, platform)
             return SessionStatus(
                 platform=platform,
                 status=STATUS_NEEDS_LOGIN,
                 login_url=PLATFORM_LOGIN_URLS[platform],
-                message="本地登录态已过期，请重新登录",
+                message=(
+                    "本地登录态缺少平台认证凭证，请重新登录"
+                    if not has_auth
+                    else "本地登录态已过期，请重新登录"
+                ),
                 storage_path=str(path),
             )
         return SessionStatus(
@@ -199,3 +219,18 @@ def _lark_auth_command() -> list[str]:
     if resolved and resolved.lower().endswith((".bat", ".cmd")):
         return ["cmd", "/c", "lark-cli", "auth", "status"]
     return ["lark-cli", "auth", "status"]
+
+
+def has_platform_auth_cookie(cookies: list[dict], platform: str) -> bool:
+    """判断 Cookie 中是否含平台登录后才会出现的认证凭证。"""
+    names = AUTH_COOKIE_NAMES.get(platform, set())
+    if not names:
+        return False
+    host = PLATFORM_LOGIN_URLS[platform].split("://", 1)[-1].split("/", 1)[0].lower()
+    for cookie in cookies:
+        if cookie.get("name") not in names:
+            continue
+        domain = str(cookie.get("domain") or "").lower().lstrip(".")
+        if domain and (host == domain or host.endswith("." + domain)):
+            return True
+    return False

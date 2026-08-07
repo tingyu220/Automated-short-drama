@@ -19,6 +19,7 @@ from pathlib import Path
 from backend.application.services.session_service import (
     PLATFORM_LOGIN_URLS,
     SessionService,
+    has_platform_auth_cookie,
 )
 from backend.infrastructure.config.settings import Settings
 
@@ -30,6 +31,10 @@ _TOMATO_LOGGED_IN_SELECTORS = (
     "a[href*='/sale/novel/list']",
 )
 _LOGIN_WAIT_SECONDS = 600
+_LOGIN_PAGE_TEXT: dict[str, tuple[str, ...]] = {
+    "delivery": ("请登录", "未登录", "飞书授权登录"),
+    "ocean": ("请登录", "未登录"),
+}
 
 
 def _profile_dir(platform: str) -> Path:
@@ -82,8 +87,13 @@ def _login_tomato(context, auto_save: bool) -> bool:
             return True
         if not auto_save:
             input("登录完成后按回车保存登录态...")
-            _save_storage(context, "tomato")
-            return True
+            if _tomato_logged_in(page) or has_platform_auth_cookie(
+                context.cookies(), "tomato"
+            ):
+                _save_storage(context, "tomato")
+                return True
+            print("未检测到番茄登录凭证，未保存登录态")
+            return False
         time.sleep(2)
 
     print("等待番茄登录超时（10 分钟），未保存登录态")
@@ -133,27 +143,59 @@ def _tomato_logged_in(page) -> bool:
 
 
 def _login_generic(platform: str, context, auto_save: bool) -> bool:
-    """投放/巨量通用登录：URL 离开登录页或新增 Cookie 即保存。"""
+    """投放/巨量通用登录：页面回访校验通过后才保存。"""
     page = context.new_page()
     page.goto(PLATFORM_LOGIN_URLS[platform], wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
     initial_keys = _cookie_keys(context)
     deadline = time.time() + _LOGIN_WAIT_SECONDS
     while time.time() < deadline:
+        if not auto_save:
+            input("登录完成后按回车保存登录态...")
+            if _verify_generic_logged_in(platform, context):
+                _save_storage(context, platform)
+                return True
+            print("未检测到平台登录态，未保存")
+            return False
         current_keys = _cookie_keys(context)
         url = page.url.lower()
         if current_keys - initial_keys or (
             url and "login" not in url and "login" in PLATFORM_LOGIN_URLS[platform]
         ):
-            _save_storage(context, platform)
-            return True
-        if not auto_save:
-            input("登录完成后按回车保存登录态...")
-            _save_storage(context, platform)
-            return True
+            if _verify_generic_logged_in(platform, context):
+                _save_storage(context, platform)
+                return True
+            time.sleep(2)
         time.sleep(2)
     print(f"等待 {platform} 登录超时（10 分钟），未保存登录态")
     return False
+
+
+def _verify_generic_logged_in(platform: str, context) -> bool:
+    """认证 Cookie 存在且回访页面未跳登录页才视为已登录。"""
+    if not has_platform_auth_cookie(context.cookies(), platform):
+        return False
+    probe = context.new_page()
+    try:
+        probe.goto(
+            PLATFORM_LOGIN_URLS[platform],
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        probe.wait_for_timeout(2000)
+        url = probe.url.lower()
+        if "login" in url or "auth" in url or "feishu.cn" in url:
+            return False
+        body = probe.inner_text("body") or ""
+        markers = _LOGIN_PAGE_TEXT.get(platform, ())
+        if any(marker in body for marker in markers):
+            return False
+        return True
+    except Exception as exc:
+        print(f"平台登录校验失败: {exc}")
+        return False
+    finally:
+        probe.close()
 
 
 def _cookie_keys(context) -> set[tuple[str, str]]:
