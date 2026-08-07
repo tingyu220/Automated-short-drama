@@ -63,6 +63,7 @@ _IAP_AD_PRESETS = {
     "B1": "付费10全-短剧库-1系数-冰依好剧",
     "B2": "付费3全-短剧库-1系数-剧变漫剧",
 }
+_DOUYIN_ACCOUNT = "43242208659"
 
 
 def _load_token() -> str:
@@ -288,7 +289,7 @@ def _build_snapshot(datasets: dict[str, list[dict]]) -> dict:
                     str(cid_row.get("company") or ""),
                     is_iap=is_iap,
                 ),
-                "douyin_account": "",
+                "douyin_account": _DOUYIN_ACCOUNT,
                 "ad_preset_candidates": candidates,
                 "open_preset_candidates": open_candidates,
             }

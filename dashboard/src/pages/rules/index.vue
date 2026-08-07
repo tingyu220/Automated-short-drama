@@ -84,6 +84,7 @@ async function loadVersions() {
 async function load() {
   await ruleStore.fetchRules()
   await loadVersions()
+  await deliveryConfigStore.loadForCategory("cid")
   await deliveryConfigStore.loadForCategory(selectedCategory.value)
 }
 
