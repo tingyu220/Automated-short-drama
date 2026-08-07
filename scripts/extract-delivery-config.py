@@ -53,6 +53,17 @@ ENDPOINTS: dict[str, tuple[str, str, BodyFactory | None]] = {
     ),
 }
 
+_IAA_AD_PRESETS = {
+    "B1": "1-iaa漫剧-短剧漫剧库（新美）一零五-一万预算-剧变漫剧",
+    "B4": "4-iaa漫剧-小说库（新美）一零五-一万预算-剧变漫剧",
+    "B7": "7-iaa漫剧-电商库（新美）一零五-一万预算-剧变漫剧",
+    "BX": "bx-iaa漫剧-低设系数短剧漫剧库（新美）1.03-三千预算-剧变漫剧",
+}
+_IAP_AD_PRESETS = {
+    "B1": "付费10全-短剧库-1系数-冰依好剧",
+    "B2": "付费3全-短剧库-1系数-剧变漫剧",
+}
+
 
 def _load_token() -> str:
     data = json.loads(STORAGE.read_text(encoding="utf-8"))
@@ -121,6 +132,31 @@ def _candidate_ad_preset(row: dict) -> bool:
     return False
 
 
+def _select_open_preset(
+    open_rows: list[dict],
+    company: str,
+    *,
+    is_iap: bool,
+) -> str:
+    """按主体与变现类型选择开户预设；多候选时优先 ty/端付。"""
+    expected = "IAP" if is_iap else "IAA"
+    matches = [
+        row["preset_name"]
+        for row in open_rows
+        if row["company"] == company
+        and row["monetization_type"] == expected
+    ]
+    if not matches:
+        return ""
+    for name in matches:
+        if is_iap and name.startswith("端付"):
+            return name
+    for name in matches:
+        if "ty" in name:
+            return name
+    return matches[0]
+
+
 def _build_snapshot(datasets: dict[str, list[dict]]) -> dict:
     accounts = datasets["accounts"]
     ad_presets = datasets["ad_presets"]
@@ -155,6 +191,11 @@ def _build_snapshot(datasets: dict[str, list[dict]]) -> dict:
                 "preview_name": preset.get("previewName"),
                 "project_name": preset.get("projectName"),
                 "ad_name": preset.get("adName"),
+                "delivery_way": (
+                    "全域投放"
+                    if preset.get("deliveryWay") == 1
+                    else "标准投放"
+                ),
                 "promotion_type": preset.get("promotionTypeStr"),
                 "product_type": preset.get("productTypeStr"),
                 "optimization_target": preset.get("optimizationTargetStr"),
@@ -236,6 +277,18 @@ def _build_snapshot(datasets: dict[str, list[dict]]) -> dict:
                 "company": cid_row.get("company"),
                 "pay_type": cid_row.get("pay_type"),
                 "account_count": cid_row["account_count"],
+                "ad_preset": (
+                    _IAP_AD_PRESETS.get(group)
+                    if is_iap
+                    else _IAA_AD_PRESETS.get(group)
+                )
+                or "",
+                "open_preset": _select_open_preset(
+                    open_rows,
+                    str(cid_row.get("company") or ""),
+                    is_iap=is_iap,
+                ),
+                "douyin_account": "",
                 "ad_preset_candidates": candidates,
                 "open_preset_candidates": open_candidates,
             }

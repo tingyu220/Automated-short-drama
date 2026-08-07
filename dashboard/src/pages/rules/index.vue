@@ -8,10 +8,12 @@ import RuleEditor, {
 import RulePublishPanel from "@/features/rule-publish/RulePublishPanel.vue"
 import RuleSimulator from "@/widgets/rule-simulator/RuleSimulator.vue"
 import PageHeader from "@/shared/ui/PageHeader.vue"
+import { useDeliveryConfigStore } from "@/app/stores/deliveryConfig"
 import { useRuleStore } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
 
 const ruleStore = useRuleStore()
+const deliveryConfigStore = useDeliveryConfigStore()
 
 const CATEGORIES = [
   { key: "link", label: "链接规则" },
@@ -19,6 +21,8 @@ const CATEGORIES = [
   { key: "material", label: "素材规则" },
   { key: "account", label: "账户数据" },
   { key: "cid", label: "CID预设" },
+  { key: "adPreset", label: "广告预设" },
+  { key: "openPreset", label: "开户预设" },
   { key: "douyin", label: "抖音号" },
   { key: "platform", label: "平台资源" },
   { key: "naming", label: "任务命名" },
@@ -80,11 +84,13 @@ async function loadVersions() {
 async function load() {
   await ruleStore.fetchRules()
   await loadVersions()
+  await deliveryConfigStore.loadForCategory(selectedCategory.value)
 }
 
 onMounted(load)
 watch(selectedCategory, () => {
   void loadVersions()
+  void deliveryConfigStore.loadForCategory(selectedCategory.value)
 })
 
 async function onSaveDraft(payload: RuleDraftPayload) {
@@ -167,6 +173,11 @@ async function onPublish(ruleSetId: string) {
           :category="selectedCategory"
           :rule-sets="ruleStore.ruleSets"
           :busy="ruleStore.loading"
+          :cids="deliveryConfigStore.cids"
+          :ad-presets="deliveryConfigStore.adPresets"
+          :open-presets="deliveryConfigStore.openPresets"
+          :mapping-proposal="deliveryConfigStore.mappingProposal"
+          :delivery-loading="deliveryConfigStore.loading"
           v-model:price-rules="priceRules"
           @save-draft="onSaveDraft"
           @publish="(payload) => onPublish(payload.ruleSetId)"

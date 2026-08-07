@@ -7,6 +7,7 @@ import { useRuleStore } from "@/app/stores/rule"
 import { useAccountStore } from "@/app/stores/account"
 import { useExceptionStore } from "@/app/stores/exception"
 import { useSessionStore } from "@/app/stores/session"
+import { useDeliveryConfigStore } from "@/app/stores/deliveryConfig"
 
 function okJson(payload: unknown): Response {
   return { ok: true, status: 200, json: async () => payload } as Response
@@ -402,6 +403,33 @@ describe("useSessionStore", () => {
     await store.importFromChrome("ocean")
 
     expect(store.sessions.ocean?.status).toBe("logged_in")
+    expect(store.error).toBeNull()
+  })
+})
+
+describe("useDeliveryConfigStore", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it("loadForCategory 拉取投放系统配置快照", async () => {
+    const fetchMock = stubFetch()
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/config/delivery/summary")) {
+        return okJson({
+          counts: { cid: 1, ad_presets: 1, open_presets: 1 },
+          extracted_at: "2026-08-07T00:00:00+00:00",
+          mapping_proposal_count: 1
+        })
+      }
+      return okJson({ rows: [], count: 0 })
+    })
+
+    const store = useDeliveryConfigStore()
+    await store.loadForCategory("cid")
+
+    expect(store.summary?.counts.cid).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(7)
     expect(store.error).toBeNull()
   })
 })

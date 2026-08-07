@@ -39,6 +39,12 @@ const props = defineProps<{
   ruleSets: RuleSet[]
   busy?: boolean
   priceRules?: PriceRuleInput[]
+  cids?: Record<string, unknown>[]
+  adPresets?: Record<string, unknown>[]
+  openPresets?: Record<string, unknown>[]
+  accounts?: Record<string, unknown>[]
+  mappingProposal?: Record<string, unknown>[]
+  deliveryLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -53,6 +59,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   material: "素材规则",
   account: "账户数据",
   cid: "CID预设",
+  adPreset: "广告预设",
+  openPreset: "开户预设",
   douyin: "抖音号",
   platform: "平台资源",
   naming: "任务命名",
@@ -178,6 +186,10 @@ const ruleSetId = computed(
 
 const isPrice = computed(() => props.category === "price")
 const isMaterial = computed(() => props.category === "material")
+const isCid = computed(() => props.category === "cid")
+const isAdPreset = computed(() => props.category === "adPreset")
+const isOpenPreset = computed(() => props.category === "openPreset")
+const isDouyin = computed(() => props.category === "douyin")
 const isVersion = computed(() => props.category === "version")
 const reservedItems = computed(() => RESERVED_ITEMS[props.category] ?? [])
 
@@ -185,6 +197,10 @@ function draftData(): Record<string, unknown> {
   if (isPrice.value) return { ...draft.value }
   if (isMaterial.value) return { ranges: materialRows.value }
   return {}
+}
+
+function joinCandidates(value: unknown): string {
+  return Array.isArray(value) ? (value as string[]).join("；") : String(value ?? "")
 }
 
 function saveDraft() {
@@ -380,6 +396,123 @@ function publish() {
       </div>
     </template>
 
+    <template v-else-if="isCid">
+      <div class="rule-editor__sync-line">
+        <span>已同步 CID 组 {{ mappingProposal?.length ?? 0 }} 个</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>CID</th>
+              <th>组</th>
+              <th>主体</th>
+              <th>账户数</th>
+              <th>广告预设</th>
+              <th>开户预设</th>
+              <th>抖音号</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in mappingProposal ?? []"
+              :key="String(row.cid)"
+            >
+              <td>{{ row.cid }}</td>
+              <td>{{ row.group }}</td>
+              <td>{{ row.company }}</td>
+              <td>{{ row.account_count }}</td>
+              <td>{{ row.ad_preset }}</td>
+              <td>{{ row.open_preset }}</td>
+              <td>{{ row.douyin_account || "待配置" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isAdPreset">
+      <div class="rule-editor__sync-line">
+        <span>广告预设 {{ adPresets?.length ?? 0 }} 条</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>预设名称</th>
+              <th>投放方式</th>
+              <th>推广业务</th>
+              <th>商品类型</th>
+              <th>优化目标</th>
+              <th>深度优化</th>
+              <th>竞价策略</th>
+              <th>ROI系数</th>
+              <th>日预算</th>
+              <th>模板ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in adPresets ?? []" :key="String(row.id)">
+              <td>{{ row.preview_name }}</td>
+              <td>{{ row.delivery_way }}</td>
+              <td>{{ row.promotion_type }}</td>
+              <td>{{ row.product_type }}</td>
+              <td>{{ row.optimization_target }}</td>
+              <td>{{ row.deep_optimization }}</td>
+              <td>{{ row.bidding_strategy }}</td>
+              <td>{{ row.roi_coefficient }}</td>
+              <td>{{ row.daily_budget }}</td>
+              <td>{{ row.product_template_id }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isOpenPreset">
+      <div class="rule-editor__sync-line">
+        <span>开户预设 {{ openPresets?.length ?? 0 }} 条</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+      <div class="rule-editor__scroll">
+        <table class="rule-editor__table">
+          <thead>
+            <tr>
+              <th>预设名称</th>
+              <th>主体</th>
+              <th>变现类型</th>
+              <th>App类型</th>
+              <th>平台</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in openPresets ?? []" :key="String(row.id)">
+              <td>{{ row.preset_name }}</td>
+              <td>{{ row.company }}</td>
+              <td>{{ row.monetization_type }}</td>
+              <td>{{ row.app_type }}</td>
+              <td>{{ row.platform }}</td>
+              <td>{{ row.created_at }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <template v-else-if="isDouyin">
+      <p class="rule-editor__note">
+        投放系统页面未直接提供抖音号字段；当前可查看账户池，
+        待确认抖音号来源后接入映射。
+      </p>
+      <div class="rule-editor__sync-line">
+        <span>账户 {{ accounts?.length ?? 0 }} 条</span>
+        <span v-if="deliveryLoading" class="rule-editor__sync-status">同步中</span>
+      </div>
+    </template>
+
     <template v-else-if="isVersion">
       <p class="rule-editor__note">
         选择左侧规则分类后，在此查看对应规则集的草稿、校验与发布版本。
@@ -495,9 +628,23 @@ function publish() {
 
 .rule-editor__table {
   width: 100%;
-  min-width: 880px;
+  min-width: 1200px;
   border-collapse: collapse;
   font-size: var(--font-size-table);
+}
+
+.rule-editor__sync-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.rule-editor__sync-status {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
 }
 
 .rule-editor__table th {
