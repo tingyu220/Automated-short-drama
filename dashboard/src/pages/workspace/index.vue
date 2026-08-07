@@ -220,14 +220,14 @@ const resourceStatuses = computed(() => {
               <span class="resource-item__label">{{ item.label }}</span>
               <span class="resource-item__value">{{ item.value }}</span>
               <button
-                v-if="!item.online && item.running"
+                v-if="!item.online && item.running && item.key !== 'worker'"
                 class="resource-item__login"
                 @click="sessionStore.finish(item.key)"
               >
                 完成登录
               </button>
               <button
-                v-else-if="!item.online"
+                v-else-if="!item.online && item.key !== 'worker'"
                 class="resource-item__login"
                 @click="sessionStore.login(item.key)"
               >
