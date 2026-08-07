@@ -21,7 +21,7 @@ STATUS_UNKNOWN = "unknown"
 
 PLATFORM_LOGIN_URLS: dict[str, str] = {
     "feishu": "https://open.feishu.cn/document/client-docs/authentication/",
-    "tomato": "https://www.changdunovel.com/sale/login?show=true",
+    "tomato": "https://www.changdupingtai.com/page/home?show=true",
     "delivery": "http://web.tjhaozew.top/juliangg/v2",
     "ocean": "https://business.oceanengine.com",
 }
