@@ -6,6 +6,7 @@ import { usePlanStore } from "@/app/stores/plan"
 import { useRuleStore } from "@/app/stores/rule"
 import { useAccountStore } from "@/app/stores/account"
 import { useExceptionStore } from "@/app/stores/exception"
+import { useSessionStore } from "@/app/stores/session"
 
 function okJson(payload: unknown): Response {
   return { ok: true, status: 200, json: async () => payload } as Response
@@ -370,5 +371,37 @@ describe("useExceptionStore", () => {
     expect(store.exceptions).toEqual([])
     expect(store.loading).toBe(false)
     expect(store.error).toContain("服务异常")
+  })
+})
+
+describe("useSessionStore", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it("importFromChrome 成功导入后更新登录态", async () => {
+    const fetchMock = stubFetch()
+    const status = {
+      platform: "ocean",
+      status: "logged_in",
+      login_url: "https://business.oceanengine.com",
+      message: "本地 Session 已持久化并校验",
+      expires_at: null,
+      storage_path: "data/sessions/ocean/storage.json"
+    }
+    fetchMock.mockResolvedValue(
+      okJson({
+        platform: "ocean",
+        cookies: 20,
+        storage_path: status.storage_path,
+        status
+      })
+    )
+
+    const store = useSessionStore()
+    await store.importFromChrome("ocean")
+
+    expect(store.sessions.ocean?.status).toBe("logged_in")
+    expect(store.error).toBeNull()
   })
 })

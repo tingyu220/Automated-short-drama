@@ -19,6 +19,7 @@ dependencies = [
     "pytest",
     "pytest-asyncio",
     "httpx",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

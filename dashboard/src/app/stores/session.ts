@@ -83,6 +83,28 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function importFromChrome(platform: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await apiPost<{
+        platform: string
+        cookies: number
+        storage_path: string | null
+        status: PlatformSession
+      }>(`/sessions/${platform}/chrome-import`)
+      sessions.value = {
+        ...sessions.value,
+        [platform]: result.status
+      }
+      running.value = { ...running.value, [platform]: false }
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+    }
+  }
+
   function pollUntilLoggedIn(platform: string) {
     const deadline = Date.now() + 10 * 60 * 1000
     const timer = window.setInterval(async () => {
@@ -103,6 +125,7 @@ export const useSessionStore = defineStore("session", () => {
     fetchSessions,
     check,
     login,
-    finish
+    finish,
+    importFromChrome
   }
 })

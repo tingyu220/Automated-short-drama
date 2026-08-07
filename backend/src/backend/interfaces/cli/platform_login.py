@@ -4,6 +4,7 @@
     python -m backend.interfaces.cli.platform_login login tomato [--auto-save]
     python -m backend.interfaces.cli.platform_login check feishu
     python -m backend.interfaces.cli.platform_login import tomato storage.json
+    python -m backend.interfaces.cli.platform_login chrome ocean
     python -m backend.interfaces.cli.platform_login clear ocean
 
 番茄登录复用畅读首页弹窗流程：登录成功后检测到漫剧/短剧菜单即自动保存。
@@ -16,6 +17,11 @@ import json
 import time
 from pathlib import Path
 
+from backend.application.services.chrome_cookie_importer import (
+    SUPPORTED_PLATFORMS,
+    ChromeCookieImportError,
+    ChromeCookieImporter,
+)
 from backend.application.services.session_service import (
     PLATFORM_LOGIN_URLS,
     SessionService,
@@ -249,6 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     import_parser.add_argument("platform", choices=sorted(PLATFORM_LOGIN_URLS))
     import_parser.add_argument("storage_file")
 
+    chrome_parser = sub.add_parser("chrome", help="从本机 Chrome 导入登录 Cookie")
+    chrome_parser.add_argument("platform", choices=sorted(SUPPORTED_PLATFORMS))
+
     clear_parser = sub.add_parser("clear", help="清除本地登录态")
     clear_parser.add_argument("platform", choices=sorted(PLATFORM_LOGIN_URLS))
 
@@ -266,6 +275,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "import":
         return _import_storage(args.platform, args.storage_file)
+    if args.command == "chrome":
+        try:
+            path, count = ChromeCookieImporter().import_platform(args.platform)
+        except ChromeCookieImportError as exc:
+            print(f"导入失败：{exc}")
+            return 2
+        print(f"已从 Chrome 导入 {count} 个 Cookie：{path}")
+        return 0
     if args.command == "clear":
         SessionService().clear(args.platform)
         print(f"已清除 {args.platform} 登录态")

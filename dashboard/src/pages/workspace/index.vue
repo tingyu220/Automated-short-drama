@@ -219,20 +219,36 @@ const resourceStatuses = computed(() => {
               />
               <span class="resource-item__label">{{ item.label }}</span>
               <span class="resource-item__value">{{ item.value }}</span>
-              <button
-                v-if="!item.online && item.running && item.key !== 'worker'"
-                class="resource-item__login"
-                @click="sessionStore.finish(item.key)"
+              <template
+                v-if="
+                  !item.online &&
+                  item.key !== 'worker' &&
+                  item.key !== 'feishu'
+                "
               >
-                完成登录
-              </button>
-              <button
-                v-else-if="!item.online && item.key !== 'worker'"
-                class="resource-item__login"
-                @click="sessionStore.login(item.key)"
-              >
-                去登录
-              </button>
+                <button
+                  v-if="item.running"
+                  class="resource-item__login"
+                  @click="sessionStore.finish(item.key)"
+                >
+                  完成登录
+                </button>
+                <template v-else>
+                  <button
+                    class="resource-item__login"
+                    @click="sessionStore.login(item.key)"
+                  >
+                    去登录
+                  </button>
+                  <button
+                    class="resource-item__login"
+                    title="从本机 Chrome 读取登录 Cookie"
+                    @click="sessionStore.importFromChrome(item.key)"
+                  >
+                    Chrome导入
+                  </button>
+                </template>
+              </template>
             </li>
           </ul>
         </section>

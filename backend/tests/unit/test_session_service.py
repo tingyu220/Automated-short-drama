@@ -141,6 +141,24 @@ class TestBrowserPlatforms:
 
         assert service.check("tomato").status == STATUS_LOGGED_IN
 
+    def test_session_cookie_with_minus_one_expires_stays_logged_in(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "tomato",
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "x",
+                        "domain": ".changdupingtai.com",
+                        "expires": -1,
+                    }
+                ]
+            },
+        )
+
+        assert service.check("tomato").status == STATUS_LOGGED_IN
+
     def test_delivery_without_admin_token_needs_login(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
         service.import_storage(
@@ -197,6 +215,37 @@ class TestBrowserPlatforms:
         assert service.cookies_for("tomato") == [
             {"name": "session", "value": "x"}
         ]
+
+    def test_import_storage_dedupes_and_keeps_new_cookie(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "ocean",
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "old",
+                        "domain": ".oceanengine.com",
+                        "path": "/",
+                    }
+                ]
+            },
+        )
+        service.import_storage(
+            "ocean",
+            {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "new",
+                        "domain": ".oceanengine.com",
+                        "path": "/",
+                    }
+                ]
+            },
+        )
+
+        assert service.cookies_for("ocean")[0]["value"] == "new"
 
     def test_cookies_for_feishu_empty(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)

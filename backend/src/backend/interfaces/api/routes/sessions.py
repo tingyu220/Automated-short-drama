@@ -1,9 +1,13 @@
 """平台登录态 API：状态检查、storage 导入与清理。"""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.application.services.chrome_cookie_importer import (
+    ChromeCookieImportError,
+    ChromeCookieImporter,
+)
 from backend.application.services.session_service import SessionService
 from backend.application.services.session_login import SessionLoginManager
 
@@ -21,6 +25,7 @@ def _service() -> SessionService:
 
 
 _login_manager = SessionLoginManager()
+_chrome_importer = ChromeCookieImporter()
 
 
 @router.get("/sessions")
@@ -66,3 +71,19 @@ def finish_login(platform: str):
     """用户确认已完成登录，立即保存当前 Session。"""
     finished = _login_manager.finish(platform)
     return {"platform": platform, "finished": finished}
+
+
+@router.post("/sessions/{platform}/chrome-import")
+def import_chrome_session(platform: str):
+    """从本机 Chrome 读取并导入指定平台登录 Cookie。"""
+    try:
+        path, count = _chrome_importer.import_platform(platform)
+    except ChromeCookieImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    status = _service().check(platform)
+    return {
+        "platform": platform,
+        "cookies": count,
+        "storage_path": str(path),
+        "status": status.__dict__,
+    }

@@ -87,8 +87,12 @@ class SessionService:
         path = self.storage_path(platform)
         path.parent.mkdir(parents=True, exist_ok=True)
         existing = self._load_storage(platform)
+        incoming_cookies = storage_state.get("cookies", [])
+        cookies = _dedupe_cookies(
+            incoming_cookies + existing.get("cookies", [])
+        )
         merged = {
-            "cookies": existing.get("cookies", []) + storage_state.get("cookies", []),
+            "cookies": cookies,
             "origins": existing.get("origins", []) + storage_state.get("origins", []),
         }
         path.write_text(
@@ -164,11 +168,7 @@ class SessionService:
         storage = self._load_storage(platform)
         cookies = storage.get("cookies") or []
         now = time.time()
-        unexpired = [
-            cookie
-            for cookie in cookies
-            if cookie.get("expires") is None or float(cookie["expires"]) >= now
-        ]
+        unexpired = [cookie for cookie in cookies if _cookie_is_active(cookie, now)]
         if path.exists() and unexpired and has_platform_auth_cookie(
             unexpired, platform
         ):
@@ -234,3 +234,31 @@ def has_platform_auth_cookie(cookies: list[dict], platform: str) -> bool:
         if domain and (host == domain or host.endswith("." + domain)):
             return True
     return False
+
+
+def _dedupe_cookies(cookies: list[dict]) -> list[dict]:
+    """按 name/domain/path 去重，新导入的 Cookie 优先。"""
+    seen: set[tuple[str, str, str]] = set()
+    result: list[dict] = []
+    for cookie in cookies:
+        key = (
+            str(cookie.get("name") or ""),
+            str(cookie.get("domain") or ""),
+            str(cookie.get("path") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(cookie)
+    return result
+
+
+def _cookie_is_active(cookie: dict, now: float) -> bool:
+    """Session Cookie（无过期时间）视为有效，过期时间戳为 -1 也视为有效。"""
+    expires = cookie.get("expires")
+    if expires is None:
+        return True
+    try:
+        return float(expires) < 0 or float(expires) >= now
+    except (TypeError, ValueError):
+        return True

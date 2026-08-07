@@ -48,3 +48,16 @@ def test_clear_command_uses_service(monkeypatch, capsys):
 
     assert code == 0
     assert fake.cleared == ["ocean"]
+
+
+def test_chrome_command_uses_importer(monkeypatch, capsys):
+    class FakeChromeImporter:
+        def import_platform(self, platform: str):
+            return Path("sessions") / "ocean" / "storage.json", 42
+
+    monkeypatch.setattr(cli, "ChromeCookieImporter", lambda: FakeChromeImporter())
+
+    code = cli.main(["chrome", "ocean"])
+
+    assert code == 0
+    assert "42" in capsys.readouterr().out
