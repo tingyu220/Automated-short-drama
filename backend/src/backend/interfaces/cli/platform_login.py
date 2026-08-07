@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 from pathlib import Path
 
@@ -93,8 +92,9 @@ def _login_tomato(context, auto_save: bool) -> bool:
 
 def _fill_tomato_credentials(page) -> None:
     """环境变量存在时自动填写畅读账号密码。"""
-    account = os.getenv("WORKBUDDY_CHANGDU_ACCOUNT", "").strip()
-    password = os.getenv("WORKBUDDY_CHANGDU_PASSWORD", "").strip()
+    settings = Settings()
+    account = (settings.changdu_account or "").strip()
+    password = (settings.changdu_password or "").strip()
     if not account or not password:
         return
     email = page.query_selector(

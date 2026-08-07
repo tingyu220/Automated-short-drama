@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="WORKBUDDY_",
         case_sensitive=False,
+        env_file=str(PROJECT_ROOT / ".env"),
     )
 
     app_name: str = "short-drama-delivery-workbuddy"
@@ -44,6 +45,8 @@ class Settings(BaseSettings):
     config_defaults_dir: Path = Path("configs/defaults")
     data_dir: Path = Path("data")
     log_level: str = "INFO"
+    changdu_account: str = ""
+    changdu_password: str = ""
 
     @field_validator("allow_final_submit", mode="before")
     @classmethod
