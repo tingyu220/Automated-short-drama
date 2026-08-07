@@ -122,12 +122,12 @@ function openPlan(plan: PlanView) {
           </tr>
         </tbody>
       </table>
-      <PaginationBar
-        v-model:page="page"
-        v-model:page-size="pageSize"
-        :total="planStore.plans.length"
-      />
     </div>
+    <PaginationBar
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :total="planStore.plans.length"
+    />
 
     <ElDrawer
       v-model="drawerOpen"
