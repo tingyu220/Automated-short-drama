@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -136,13 +137,27 @@ class SessionService:
         """网页平台登录态：storage.json 存在且含 Cookie 视为已持久化。"""
         path = self.storage_path(platform)
         storage = self._load_storage(platform)
-        has_cookies = bool(storage.get("cookies"))
-        if path.exists() and has_cookies:
+        cookies = storage.get("cookies") or []
+        now = time.time()
+        unexpired = [
+            cookie
+            for cookie in cookies
+            if cookie.get("expires") is None or float(cookie["expires"]) >= now
+        ]
+        if path.exists() and unexpired:
             return SessionStatus(
                 platform=platform,
                 status=STATUS_LOGGED_IN,
                 login_url=PLATFORM_LOGIN_URLS[platform],
                 message="本地 Session 已持久化",
+                storage_path=str(path),
+            )
+        if path.exists() and cookies:
+            return SessionStatus(
+                platform=platform,
+                status=STATUS_NEEDS_LOGIN,
+                login_url=PLATFORM_LOGIN_URLS[platform],
+                message="本地登录态已过期，请重新登录",
                 storage_path=str(path),
             )
         return SessionStatus(

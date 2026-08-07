@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -93,6 +94,27 @@ class TestBrowserPlatforms:
         status = service.check("tomato")
         assert status.status == STATUS_LOGGED_IN
         assert status.storage_path == str(path)
+
+    def test_expired_cookie_needs_login(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "tomato",
+            {"cookies": [{"name": "session", "expires": time.time() - 100}]},
+        )
+
+        status = service.check("tomato")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert "已过期" in status.message
+
+    def test_session_cookie_without_expires_stays_logged_in(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "tomato",
+            {"cookies": [{"name": "session"}]},
+        )
+
+        assert service.check("tomato").status == STATUS_LOGGED_IN
 
     def test_clear_removes_storage(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
