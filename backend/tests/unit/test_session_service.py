@@ -116,6 +116,21 @@ class TestBrowserPlatforms:
 
         assert service.check("tomato").status == STATUS_LOGGED_IN
 
+    def test_cookies_for_returns_stored_cookies(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "tomato",
+            {"cookies": [{"name": "session", "value": "x"}]},
+        )
+
+        assert service.cookies_for("tomato") == [
+            {"name": "session", "value": "x"}
+        ]
+
+    def test_cookies_for_feishu_empty(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        assert service.cookies_for("feishu") == []
+
     def test_clear_removes_storage(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
         service.import_storage("ocean", {"cookies": [{"name": "a"}]})

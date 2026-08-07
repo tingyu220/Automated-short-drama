@@ -202,10 +202,34 @@ def _open_real_page() -> Any:
     """启动 Playwright 浏览器并生成真实 page；退出时由 CLI 负责关闭。"""
     from playwright.sync_api import sync_playwright
 
+    from backend.application.services.session_service import SessionService
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
         try:
-            page = browser.new_page()
+            context = browser.new_context()
+            service = SessionService()
+            for platform in ("tomato", "delivery", "ocean"):
+                cookies = [
+                    {
+                        key: cookie[key]
+                        for key in (
+                            "name",
+                            "value",
+                            "domain",
+                            "path",
+                            "expires",
+                            "httpOnly",
+                            "secure",
+                            "sameSite",
+                        )
+                        if key in cookie and cookie.get("domain")
+                    }
+                    for cookie in service.cookies_for(platform)
+                ]
+                if cookies:
+                    context.add_cookies(cookies)
+            page = context.new_page()
             yield page
         finally:
             browser.close()

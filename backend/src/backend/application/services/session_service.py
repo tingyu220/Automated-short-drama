@@ -97,6 +97,18 @@ class SessionService:
         """返回平台 storage_state 文件路径。"""
         return self._sessions_dir / platform / "storage.json"
 
+    def cookies_for(self, platform: str) -> list[dict]:
+        """返回平台已持久化 Cookie（供 Playwright context 加载）。"""
+        if platform not in PLATFORM_LOGIN_URLS or platform == "feishu":
+            return []
+        storage = self._load_storage(platform)
+        cookies = storage.get("cookies") or []
+        return [
+            cookie
+            for cookie in cookies
+            if isinstance(cookie, dict) and cookie.get("name")
+        ]
+
     def _check_feishu(self) -> SessionStatus:
         """飞书登录态来自 lark-cli auth status。"""
         try:
