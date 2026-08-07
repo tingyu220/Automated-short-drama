@@ -14,6 +14,7 @@ export interface PlatformSession {
 
 export const useSessionStore = defineStore("session", () => {
   const sessions = ref<Record<string, PlatformSession>>({})
+  const running = ref<Record<string, boolean>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -39,6 +40,9 @@ export const useSessionStore = defineStore("session", () => {
         `/sessions/${platform}/check`
       )
       sessions.value = { ...sessions.value, [platform]: status }
+      if (status.status === "logged_in") {
+        running.value = { ...running.value, [platform]: false }
+      }
     } catch (err) {
       error.value = toErrorMessage(err)
     } finally {
@@ -46,5 +50,59 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  return { sessions, loading, error, fetchSessions, check }
+  async function login(platform: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await apiPost<{
+        platform: string
+        started: boolean
+        running: boolean
+      }>(`/sessions/${platform}/login`)
+      running.value = { ...running.value, [platform]: result.running }
+      if (result.running) {
+        void pollUntilLoggedIn(platform)
+      }
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function finish(platform: string) {
+    loading.value = true
+    error.value = null
+    try {
+      await apiPost(`/sessions/${platform}/finish`)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+      await check(platform)
+    }
+  }
+
+  function pollUntilLoggedIn(platform: string) {
+    const deadline = Date.now() + 10 * 60 * 1000
+    const timer = window.setInterval(async () => {
+      if (!running.value[platform] || Date.now() > deadline) {
+        window.clearInterval(timer)
+        running.value = { ...running.value, [platform]: false }
+        return
+      }
+      await check(platform)
+    }, 5000)
+  }
+
+  return {
+    sessions,
+    running,
+    loading,
+    error,
+    fetchSessions,
+    check,
+    login,
+    finish
+  }
 })

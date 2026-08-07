@@ -87,18 +87,20 @@ const resourceStatuses = computed(() => {
     const session = sessionStore.sessions[key]
     const online = session?.status === "logged_in"
     return {
+      key,
       label,
       value: online ? "已登录" : "未登录",
       online,
-      loginUrl: session?.login_url ?? ""
+      running: sessionStore.running[key] === true
     }
   }
   return [
     {
+      key: "worker",
       label: "Automation Worker",
       value: workerOnline ? "在线" : "离线",
       online: workerOnline,
-      loginUrl: ""
+      running: false
     },
     platformStatus("feishu", "飞书"),
     platformStatus("tomato", "番茄"),
@@ -217,15 +219,20 @@ const resourceStatuses = computed(() => {
               />
               <span class="resource-item__label">{{ item.label }}</span>
               <span class="resource-item__value">{{ item.value }}</span>
-              <a
-                v-if="!item.online && item.loginUrl"
+              <button
+                v-if="!item.online && item.running"
                 class="resource-item__login"
-                :href="item.loginUrl"
-                target="_blank"
-                rel="noopener"
+                @click="sessionStore.finish(item.key)"
+              >
+                完成登录
+              </button>
+              <button
+                v-else-if="!item.online"
+                class="resource-item__login"
+                @click="sessionStore.login(item.key)"
               >
                 去登录
-              </a>
+              </button>
             </li>
           </ul>
         </section>
