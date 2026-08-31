@@ -58,9 +58,14 @@ class TestRulesApi:
         response = client.get("/api/rules")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3
+        assert len(data) == 4
         keys = {item["key"] for item in data}
-        assert keys == {"iaa_episode_threshold", "iap_price_2_9", "iap_price_9_9"}
+        assert keys == {
+            "iaa_episode_threshold",
+            "iap_price_2_9",
+            "iap_price_9_9",
+            "material_rules",
+        }
         item = next(row for row in data if row["key"] == "iap_price_2_9")
         assert {"id", "key", "name", "category", "status", "updated_at"} <= set(item)
         assert item["status"] == "DRAFT"

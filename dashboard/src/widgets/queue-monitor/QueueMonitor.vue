@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import ErrorState from "@/shared/ui/ErrorState.vue"
 import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
@@ -47,6 +47,8 @@ const GROUPS: QueueGroup[] = [
   { key: "failed", label: "失败", states: ["FAILED"] }
 ]
 
+const SELECTABLE_GROUPS = new Set(["queued", "waiting"])
+
 const props = defineProps<{
   items: QueueItemView[]
   tasks: TaskBase[]
@@ -57,8 +59,87 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "action", payload: { item: QueueItemView; action: QueueAction }): void
+  (e: "batch-action", payload: { items: QueueItemView[]; action: QueueAction }): void
   (e: "retry"): void
 }>()
+
+/* ── 批量选择 ── */
+const selectedIds = ref<Set<string>>(new Set())
+
+function isSelectable(groupKey: string): boolean {
+  return SELECTABLE_GROUPS.has(groupKey)
+}
+
+function isSelected(id: string): boolean {
+  return selectedIds.value.has(id)
+}
+
+function toggleRow(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+function isAllSelected(rows: { id: string }[]): boolean {
+  return rows.length > 0 && rows.every((r) => selectedIds.value.has(r.id))
+}
+
+function isPartialSelected(rows: { id: string }[]): boolean {
+  const n = rows.filter((r) => selectedIds.value.has(r.id)).length
+  return n > 0 && n < rows.length
+}
+
+function toggleSelectAll(rows: { id: string }[]) {
+  const next = new Set(selectedIds.value)
+  if (isAllSelected(rows)) {
+    rows.forEach((r) => next.delete(r.id))
+  } else {
+    rows.forEach((r) => next.add(r.id))
+  }
+  selectedIds.value = next
+}
+
+function selectedCount(rows: { id: string }[]): number {
+  return rows.filter((r) => selectedIds.value.has(r.id)).length
+}
+
+function selectedRows(rows: QueueItemView[]): QueueItemView[] {
+  return rows.filter((r) => selectedIds.value.has(r.id))
+}
+
+function clearGroupSelection(rows: { id: string }[]) {
+  const next = new Set(selectedIds.value)
+  rows.forEach((r) => next.delete(r.id))
+  selectedIds.value = next
+}
+
+function batchActionsFor(groupKey: string): QueueActionOption[] {
+  switch (groupKey) {
+    case "queued":
+      return [
+        { key: "pause", label: "批量暂停" },
+        { key: "cancel", label: "批量取消", danger: true }
+      ]
+    case "waiting":
+      return [{ key: "cancel", label: "批量取消", danger: true }]
+    default:
+      return []
+  }
+}
+
+function emitBatchAction(items: QueueItemView[], action: QueueAction) {
+  emit("batch-action", { items, action })
+}
+
+const vIndeterminate = {
+  updated(el: HTMLInputElement, binding: { value: boolean }) {
+    el.indeterminate = binding.value
+  },
+  mounted(el: HTMLInputElement, binding: { value: boolean }) {
+    el.indeterminate = binding.value
+  }
+}
 
 const groups = computed(() =>
   GROUPS.map((group) => ({
@@ -69,7 +150,7 @@ const groups = computed(() =>
         const task = props.tasks.find((entry) => entry.id === item.task_id)
         return {
           ...item,
-          dramaName: task?.drama_name ?? "—"
+          dramaName: item.drama_name || task?.drama_name || `任务 ${item.task_id}`
         }
       })
   }))
@@ -172,6 +253,29 @@ const workerFields = computed(() => [
         <header class="queue-monitor__group-header">
           <h3 class="queue-monitor__group-title">{{ group.label }}</h3>
           <span class="queue-monitor__group-count">{{ group.rows.length }}</span>
+          <div
+            v-if="isSelectable(group.key) && selectedCount(group.rows) > 0"
+            class="queue-monitor__batch-bar"
+          >
+            <span class="queue-monitor__batch-info">已选 {{ selectedCount(group.rows) }} 项</span>
+            <button
+              v-for="option in batchActionsFor(group.key)"
+              :key="option.key"
+              type="button"
+              class="queue-monitor__batch-btn"
+              :class="{ 'queue-monitor__batch-btn--danger': option.danger }"
+              @click="emitBatchAction(selectedRows(group.rows), option.key)"
+            >
+              {{ option.label }}
+            </button>
+            <button
+              type="button"
+              class="queue-monitor__batch-clear"
+              @click="clearGroupSelection(group.rows)"
+            >
+              清除选择
+            </button>
+          </div>
         </header>
         <p v-if="group.rows.length === 0" class="queue-monitor__group-empty">
           暂无任务
@@ -180,6 +284,14 @@ const workerFields = computed(() => [
           <table class="queue-monitor__table">
             <thead>
               <tr>
+                <th v-if="isSelectable(group.key)" class="queue-monitor__check-head">
+                  <input
+                    type="checkbox"
+                    :checked="isAllSelected(group.rows)"
+                    v-indeterminate="isPartialSelected(group.rows)"
+                    @change="toggleSelectAll(group.rows)"
+                  />
+                </th>
                 <th>剧名</th>
                 <th>优先级</th>
                 <th>可执行时间</th>
@@ -190,6 +302,13 @@ const workerFields = computed(() => [
             </thead>
             <tbody>
               <tr v-for="row in group.rows" :key="row.id">
+                <td v-if="isSelectable(group.key)" class="queue-monitor__check">
+                  <input
+                    type="checkbox"
+                    :checked="isSelected(row.id)"
+                    @change="toggleRow(row.id)"
+                  />
+                </td>
                 <td class="queue-monitor__drama">{{ row.dramaName }}</td>
                 <td>{{ row.priority }}</td>
                 <td>{{ formatDateTime(row.available_at) }}</td>
@@ -320,6 +439,75 @@ const workerFields = computed(() => [
   border-radius: 999px;
   font-size: var(--font-size-caption);
   font-weight: 600;
+}
+
+.queue-monitor__batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.queue-monitor__batch-info {
+  color: var(--color-primary);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+}
+
+.queue-monitor__batch-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-button);
+  background: var(--color-bg-panel);
+  color: var(--color-primary);
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.queue-monitor__batch-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.queue-monitor__batch-btn--danger {
+  border-color: var(--color-status-failed);
+  color: var(--color-status-failed);
+}
+
+.queue-monitor__batch-btn--danger:hover {
+  background: var(--color-status-failed);
+  color: #fff;
+}
+
+.queue-monitor__batch-clear {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-button);
+  background: var(--color-bg-panel);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+}
+
+.queue-monitor__batch-clear:hover {
+  border-color: var(--color-text-secondary);
+}
+
+.queue-monitor__check-head,
+.queue-monitor__check {
+  width: 36px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.queue-monitor__check-head input,
+.queue-monitor__check input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
 }
 
 .queue-monitor__group-empty {

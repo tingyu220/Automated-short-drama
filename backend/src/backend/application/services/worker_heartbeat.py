@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from backend.domain.common.timezones import as_utc
-from backend.domain.ports.repositories import WorkerLeaseRepository
+from backend.domain.ports.repositories import QueueRepository, WorkerLeaseRepository
+from backend.domain.queue.queue_item import QueueState
 from backend.domain.worker.worker_lease import WorkerLease
 
 
@@ -49,6 +50,39 @@ def heartbeat(
         now + timedelta(seconds=lease_seconds),
         now,
     )
+
+
+def renew_execution_lease(
+    lease_repo: WorkerLeaseRepository,
+    queue_repo: QueueRepository,
+    queue_item_id: str,
+    worker_id: str,
+    host: str,
+    pid: int,
+    lease_seconds: int = 60,
+    now: datetime | None = None,
+) -> bool:
+    """同一事务续 Worker 与当前运行队列项租约。"""
+    heartbeat_at = as_utc(now if now is not None else _now())
+    lease_until = heartbeat_at + timedelta(seconds=lease_seconds)
+    heartbeat(
+        lease_repo,
+        worker_id,
+        host,
+        pid,
+        lease_seconds,
+        now=heartbeat_at,
+    )
+    item = queue_repo.get(queue_item_id)
+    if (
+        item is None
+        or item.claimed_by != worker_id
+        or item.state not in {QueueState.CLAIMED, QueueState.RUNNING}
+    ):
+        return False
+    item.lease_until = lease_until
+    queue_repo.update(item)
+    return True
 
 
 def release_lease(

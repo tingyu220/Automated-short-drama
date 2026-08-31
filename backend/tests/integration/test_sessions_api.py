@@ -35,10 +35,14 @@ def test_list_sessions_reports_four_platforms(tmp_path):
     assert data["tomato"]["status"] == "needs_login"
 
 
-def test_import_storage_and_check(tmp_path):
+def test_import_storage_and_check(tmp_path, monkeypatch):
     """导入 storage 后 check 返回 logged_in。"""
     service = SessionService(sessions_dir=tmp_path)
     sessions_route._service = lambda: service
+    monkeypatch.setattr(
+        "backend.application.services.session_service._probe_browser_session",
+        lambda platform, storage: (True, "实时页面校验通过"),
+    )
     app = create_app(dist_dir=None)
     client = TestClient(app)
 

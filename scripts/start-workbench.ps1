@@ -6,6 +6,11 @@
     和 Automation Worker。等待 healthz 就绪后 Chrome 应用模式打开。
     Ctrl+C 优雅停止所有子进程。
 #>
+param(
+    [ValidateSet("MOCK", "REAL")]
+    [string]$WorkerMode = "MOCK"
+)
+
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
@@ -44,15 +49,7 @@ $backendJob = Start-Job -Name "Backend" -ArgumentList $ProjectRoot {
 }
 $jobs += $backendJob
 
-# 3. 启动 Worker
-$workerJob = Start-Job -Name "Worker" -ArgumentList $ProjectRoot {
-    param($root)
-    Set-Location "$root\backend"
-    python -m backend.bootstrap.automation_worker
-}
-$jobs += $workerJob
-
-# 等待 healthz 就绪
+# 3. 等待 healthz 就绪
 Write-Host "等待后端就绪 (http://127.0.0.1:8765/healthz) ..."
 $ready = $false
 for ($i = 0; $i -lt 30; $i++) {
@@ -68,6 +65,25 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 
 if ($ready) {
+    $runtimeBody = @{
+        mode = $WorkerMode
+        confirm_real = ($WorkerMode -eq "REAL")
+    } | ConvertTo-Json
+    Invoke-RestMethod `
+        -Uri "http://127.0.0.1:8765/api/runtime/environment" `
+        -Method Put `
+        -ContentType "application/json" `
+        -Body $runtimeBody | Out-Null
+    Write-Host "Worker 目标模式：$WorkerMode"
+
+    # 4. 后端就绪并写入目标模式后，再启动 Worker
+    $workerJob = Start-Job -Name "Worker" -ArgumentList $ProjectRoot {
+        param($root)
+        Set-Location "$root\backend"
+        python -m backend.bootstrap.automation_worker --mode-check-interval 1
+    }
+    $jobs += $workerJob
+
     Write-Host "后端已就绪，打开 Chrome 工作台..."
     Start-Process "chrome.exe" -ArgumentList "--app=http://127.0.0.1:8765"
     Write-Host "工作台启动完成。按 Ctrl+C 停止所有服务。"
@@ -88,4 +104,3 @@ try {
     }
     Write-Host "所有服务已停止。"
 }
-*** End of File

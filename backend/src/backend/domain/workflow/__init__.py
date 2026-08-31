@@ -2,3 +2,4 @@
 
 from backend.domain.workflow.step_run import StepRun, StepStatus  # noqa: F401
 from backend.domain.workflow.workflow_run import WorkflowRun  # noqa: F401
+from backend.domain.workflow.link_stage import LinkStage, RunTarget  # noqa: F401

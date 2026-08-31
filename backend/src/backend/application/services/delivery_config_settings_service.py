@@ -92,17 +92,10 @@ class DeliveryConfigSettingsService:
                 if row.get("ownerUserName")
             }
         )
-        templates = _naming_templates(snapshot)
+        templates = _naming_templates()
         return {
             "link": {
                 "iaa_episode_threshold": 50,
-                "iap_2_9_target": 2.9,
-                "iap_2_9_min": 2.6,
-                "iap_2_9_max": 5.0,
-                "iap_9_9_target": 9.9,
-                "iap_9_9_min": 8.8,
-                "iap_9_9_max": 13.8,
-                "same_distance_strategy": "HIGHER_PRICE_FIRST",
             },
             "douyin": {
                 "douyin_account": douyin_values[-1] if douyin_values else ""
@@ -160,22 +153,19 @@ class DeliveryConfigSettingsService:
             "open_preset_names": _unique_values(
                 (row.get("preset_name") for row in open_presets)
             ),
-            "naming_templates": _naming_templates(snapshot),
+            "naming_templates": _naming_templates(),
             "douyin_accounts": douyin_values,
             "account_owners": owners,
         }
 
 
-def _naming_templates(snapshot: dict) -> list[str]:
-    templates: list[str] = []
-    seen: set[str] = set()
-    for preset in snapshot.get("ad_presets") or []:
-        for key in ("project_name", "ad_name"):
-            value = str(preset.get(key) or "").strip()
-            if value and "<" in value and value not in seen:
-                seen.add(value)
-                templates.append(value)
-    return templates
+def _naming_templates() -> list[str]:
+    """返回业务规则定义的唯一任务命名模板。"""
+    return [
+        "<平台方>#端付<剧名称><日期>ubr-<创建日期>-<时分秒-n>",
+        "<平台方>#端免<剧名称><日期>bxr-<创建日期>-<时分秒-n>",
+        "<平台方>#测试<剧名称><日期>cbo-<创建日期>-<时分秒-n>",
+    ]
 
 
 def _unique_values(values) -> list[str]:

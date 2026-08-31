@@ -32,7 +32,6 @@ _LINK_TYPES = ("IAA", "2.9", "9.9")
 _STEP_LINK_EXTRACTION = "LINK_EXTRACTION"
 _STEP_DRAMA_ASSET = "DRAMA_ASSET"
 _STEP_PROMOTION_CONFIG = "PROMOTION_CONFIG"
-_STEP_PRODUCT = "PRODUCT"
 _STEP_PLAN_SPEC = "PLAN_SPEC"
 _STEP_SUBMIT = "SUBMIT"
 _STEP_POLL = "POLL"
@@ -111,12 +110,8 @@ class DryRunWorkflow:
         if not self._ensure_configs_or_fail(result, asset, links, task.platform):
             return result
 
-        product_id = self._create_product_or_fail(result, asset, task.drama_name)
-        if product_id is None:
-            return result
-
         plan_spec = self._build_plan_spec_or_fail(
-            result, task, links, account_cids, product_id
+            result, task, links, account_cids, None
         )
         if plan_spec is None:
             return result
@@ -180,17 +175,25 @@ class DryRunWorkflow:
         jubian_links: dict[str, str | None] | None,
     ) -> dict[str, str]:
         if task.platform == "TOMATO":
-            return self._extract_tomato_links(task.drama_name, episode_count)
+            return self._extract_tomato_links(task, episode_count)
         if task.platform == "JUBIAN":
             return self._extract_jubian_links(jubian_links)
         raise ValidationError(f"不支持的平台: {task.platform}")
 
-    def _extract_tomato_links(
-        self, drama_name: str, episode_count: int
-    ) -> dict[str, str]:
+    def _extract_tomato_links(self, task: DramaTask, episode_count: int) -> dict[str, str]:
         """番茄：按集数提取 IAA，再扫描 IAP 模板生成 2.9/9.9 链接。"""
-        iaa_link = extract_iaa(drama_name, episode_count, self._tomato)
-        scan_result = scan_iap(drama_name, self._tomato, self._price_rules)
+        iaa_link = extract_iaa(
+            task.drama_name,
+            task.available_time,
+            episode_count,
+            self._tomato,
+        )
+        scan_result = scan_iap(
+            task.drama_name,
+            task.available_time,
+            self._tomato,
+            self._price_rules,
+        )
         links = {"IAA": iaa_link.promotion_url}
         if scan_result.iap_2_9_link is not None:
             links["2.9"] = scan_result.iap_2_9_link.promotion_url
@@ -269,40 +272,6 @@ class DryRunWorkflow:
             )
         )
         return True
-
-    def _create_product_or_fail(
-        self,
-        result: DryRunResult,
-        asset: DramaAsset,
-        drama_name: str,
-    ) -> str | None:
-        try:
-            product_id = self._delivery_flow.create_product(
-                asset.album_id,
-                {
-                    "drama_name": drama_name,
-                    "album_id": asset.album_id,
-                    "link": asset.link,
-                },
-            )
-        except Exception as exc:
-            result.steps.append(
-                WorkflowStepResult(
-                    step=_STEP_PRODUCT,
-                    status=STEP_FAILED,
-                    detail=_error_detail(exc),
-                    error_code=_error_code(exc),
-                )
-            )
-            return None
-        result.steps.append(
-            WorkflowStepResult(
-                step=_STEP_PRODUCT,
-                status=STEP_OK,
-                detail=f"巨量产品已就绪: {product_id}",
-            )
-        )
-        return product_id
 
     def _build_plan_spec_or_fail(
         self,

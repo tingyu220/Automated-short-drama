@@ -58,6 +58,13 @@ class ExternalAdapterError(DomainError):
         super().__init__(message, code=code, **kwargs)  # type: ignore[arg-type]
 
 
+class DramaMismatchError(DomainError):
+    """剧名与分钟级发布时间无法唯一匹配。"""
+
+    def __init__(self, message: str = "", **kwargs: object) -> None:
+        super().__init__(message, code="DRAMA_MISMATCH", **kwargs)  # type: ignore[arg-type]
+
+
 class ValidationError(DomainError):
     """校验错误。"""
 

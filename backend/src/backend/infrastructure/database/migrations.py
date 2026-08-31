@@ -40,6 +40,7 @@ def run_migrations(
     resolved_url = resolve_sqlite_url(effective_url)
     cfg = alembic.config.Config(str(_ALEMBIC_INI))
     cfg.set_main_option("sqlalchemy.url", resolved_url)
+    cfg.set_main_option("script_location", str(_ALEMBIC_INI.parent / "alembic"))
 
     db_path = _sqlite_path(resolved_url)
     if db_path is not None and db_path.exists():

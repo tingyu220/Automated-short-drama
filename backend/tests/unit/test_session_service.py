@@ -7,11 +7,13 @@ from types import SimpleNamespace
 
 import pytest
 
+import backend.application.services.session_service as session_service_module
 from backend.application.services.session_service import (
     STATUS_LOGGED_IN,
     STATUS_NEEDS_LOGIN,
     SessionService,
 )
+from backend.application.services.session_service import _is_authenticated_probe_url
 
 
 def _lark_result(payload: dict) -> SimpleNamespace:
@@ -76,6 +78,43 @@ class TestFeishu:
 
 
 class TestBrowserPlatforms:
+    def test_tomato_public_homepage_is_not_authenticated_probe(self):
+        assert not _is_authenticated_probe_url(
+            "tomato", "https://www.changdupingtai.com/page/home?show=true"
+        )
+
+    def test_tomato_sale_page_is_authenticated_probe(self):
+        assert _is_authenticated_probe_url(
+            "tomato", "https://www.changdupingtai.com/sale/short-play/list"
+        )
+
+    def test_check_live_rejects_cookie_when_delivery_page_redirects_to_login(
+        self, tmp_path, monkeypatch
+    ):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "delivery",
+            {
+                "cookies": [
+                    {
+                        "name": "Admin-Token",
+                        "value": "stale",
+                        "domain": "web.tjhaozew.top",
+                    }
+                ]
+            },
+        )
+        monkeypatch.setattr(
+            session_service_module,
+            "_probe_browser_session",
+            lambda platform, storage: (False, "页面已跳转到登录页"),
+        )
+
+        status = service.check_live("delivery")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert status.message == "页面已跳转到登录页"
+
     def test_no_storage_needs_login(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
 

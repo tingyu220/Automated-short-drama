@@ -8,6 +8,7 @@ from datetime import datetime
 
 from backend.domain.common.timezones import SHANGHAI_TZ, UTC
 from backend.domain.tasks.drama_task import DramaTask
+from backend.domain.tasks.source_key import build_task_source_key
 
 
 _ROW_PREFIX_RE = re.compile(r"^\[row=(\d+)\]")
@@ -18,6 +19,8 @@ _TIME_COLUMN = 4
 _DRAMA_NAME_COLUMN = 5
 _PLATFORM_COLUMN = 7
 _STATUS_COLUMN = 13
+_LINK_COLUMNS = {"IAA": 9, "9.9": 10, "2.9": 11}
+_PLATFORM_NAMES = {"番茄": "TOMATO", "剧变": "JUBIAN"}
 
 
 def parse_task_rows(annotated_csv: str) -> list[DramaTask]:
@@ -51,7 +54,9 @@ def parse_annotated_rows(annotated_csv: str) -> list[tuple[int, list[str]]]:
         if match is not None and not in_quotes:
             flush()
             current_row = int(match.group(1))
-            record_lines = [line[match.end() :]]
+            record = line[match.end() :]
+            # lark-cli 在 [row=N] 后附带一个标记分隔空格，不属于 A 列值。
+            record_lines = [record[1:] if record.startswith(" ") else record]
             in_quotes = _quote_state(record_lines[0], False)
             continue
         if current_row is not None:
@@ -85,16 +90,26 @@ def _to_task(row_number: int, cells: list[str]) -> DramaTask | None:
         return None
     available_time = _parse_time(cells[_TIME_COLUMN])
     drama_name = cells[_DRAMA_NAME_COLUMN].strip()
-    platform = cells[_PLATFORM_COLUMN].strip()
+    raw_platform = cells[_PLATFORM_COLUMN].strip()
+    platform = _PLATFORM_NAMES.get(raw_platform, raw_platform)
     if available_time is None or not drama_name or not platform:
         return None
+    source_links = {
+        link_type: cells[index].strip()
+        for link_type, index in _LINK_COLUMNS.items()
+        if cells[index].strip()
+    }
+    is_validated = cells[_STATUS_COLUMN].strip().upper() == "OK" and bool(source_links)
     return DramaTask(
         id=str(row_number),
+        source_key=build_task_source_key(drama_name, platform, cells[_TIME_COLUMN]),
         drama_name=drama_name,
         platform=platform,
         available_time=available_time,
         sheet_row=row_number,
-        status=cells[_STATUS_COLUMN].strip(),
+        source_links=source_links,
+        link_set=dict(source_links) if is_validated else {},
+        link_status="VALIDATED" if is_validated else "NOT_STARTED",
     )
 
 

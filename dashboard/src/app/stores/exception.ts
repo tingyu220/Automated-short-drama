@@ -16,6 +16,9 @@ export interface ExceptionItem {
   platform?: string | null
   step?: string | null
   error_type?: string | null
+  failure_code?: string | null
+  failure_details?: Record<string, unknown> | null
+  retry_safe?: boolean | null
   message: string
   occurred_at: string
   level: string

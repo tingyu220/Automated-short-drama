@@ -39,8 +39,8 @@ withDefaults(
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 112px;
-  padding: 20px;
+  min-height: 96px;
+  padding: 16px;
   background: var(--color-bg-panel);
   border: 1px solid var(--color-bg-panel-secondary);
   border-radius: var(--radius-card);

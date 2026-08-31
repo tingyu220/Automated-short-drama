@@ -284,6 +284,9 @@ class TestPlanSpecBuilder:
             20,
             NORMAL_RANGES,
             "v1",
+            material_ids=["m1", "m2"],
+            title_packages=[f"t{i}" for i in range(6)],
+            now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
         )
 
         assert spec.drama_name == "我的剧"
@@ -306,6 +309,8 @@ class TestPlanSpecBuilder:
         assert spec.expected_project_count == 3
         assert spec.rule_version == "v1"
         assert spec.product_id == "product-1"
+        assert spec.material_ids == ["m1", "m2"]
+        assert spec.title_packages == [f"t{i}" for i in range(6)]
         assert spec.task_name.startswith("番茄#端付我的剧20260807ubr-20260807-")
         assert spec.task_name.endswith("-1")
 

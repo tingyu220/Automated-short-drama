@@ -20,6 +20,19 @@ from backend.application.services.session_service import (
 
 logger = logging.getLogger(__name__)
 
+_BASE_COOKIE_COLUMNS = (
+    "host_key",
+    "name",
+    "encrypted_value",
+    "value",
+    "path",
+    "expires_utc",
+    "is_secure",
+    "is_httponly",
+    "has_expires",
+)
+_OPTIONAL_COOKIE_COLUMNS = ("top_frame_site_key", "samesite")
+
 _PLATFORM_DOMAINS: dict[str, str] = {
     "tomato": "changdupingtai.com",
     "delivery": "tjhaozew.top",
@@ -73,16 +86,26 @@ class ChromeCookieImporter:
         domain = _PLATFORM_DOMAINS[platform]
         auth_names = AUTH_COOKIE_NAMES.get(platform, set())
         key = _load_encryption_key(self._user_data_dir)
+        locked_profiles: list[Path] = []
         for profile_dir in _chrome_profiles(self._user_data_dir):
             try:
                 cookies = _read_profile_cookies(profile_dir, key, domain)
-            except (OSError, sqlite3.DatabaseError, ChromeCookieImportError) as exc:
+            except OSError as exc:
+                locked_profiles.append(profile_dir)
+                logger.warning("读取 Chrome 配置失败: %s %s", profile_dir, exc)
+                continue
+            except (sqlite3.DatabaseError, ChromeCookieImportError) as exc:
                 logger.warning("读取 Chrome 配置失败: %s %s", profile_dir, exc)
                 continue
             if cookies and any(
                 cookie.get("name") in auth_names for cookie in cookies
             ):
                 return cookies
+        if locked_profiles:
+            raise ChromeCookieImportError(
+                "Chrome 正在运行并锁定 Cookie 文件，请关闭对应 Chrome 后重试，"
+                "或使用“去登录”"
+            )
         return []
 
 
@@ -132,34 +155,30 @@ def _read_profile_cookies(
         return []
     with tempfile.TemporaryDirectory() as tmp:
         copy_path = Path(tmp) / "Cookies"
-        shutil.copy2(source, copy_path)
-        con = sqlite3.connect(copy_path)
+        try:
+            shutil.copy2(source, copy_path)
+            con = sqlite3.connect(copy_path)
+        except OSError:
+            # Chrome keeps the live database open. Read it in SQLite read-only
+            # mode instead of failing when Windows denies a file copy.
+            try:
+                con = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)
+            except sqlite3.OperationalError as exc:
+                raise PermissionError("Chrome 正在使用 Cookies") from exc
         try:
             columns = {
                 row[1] for row in con.execute("PRAGMA table_info(cookies)")
             }
-            required = {
-                "host_key",
-                "name",
-                "encrypted_value",
-                "value",
-                "path",
-                "expires_utc",
-                "is_secure",
-                "is_httponly",
-                "has_expires",
-            }
+            required = set(_BASE_COOKIE_COLUMNS)
             if not required.issubset(columns):
                 return []
-            select = (
-                "host_key,name,encrypted_value,value,path,expires_utc,"
-                "is_secure,is_httponly,has_expires"
-            )
-            if "top_frame_site_key" in columns:
-                select += ",top_frame_site_key"
-            if "samesite" in columns:
-                select += ",samesite"
-            rows = con.execute(f"SELECT {select} FROM cookies").fetchall()
+            selected = list(_BASE_COOKIE_COLUMNS)
+            for col in _OPTIONAL_COOKIE_COLUMNS:
+                if col in columns:
+                    selected.append(col)
+            rows = con.execute(
+                f"SELECT {', '.join(selected)} FROM cookies"
+            ).fetchall()
         finally:
             con.close()
 
@@ -176,8 +195,12 @@ def _read_profile_cookies(
             is_httponly,
             has_expires,
         ) = row[:9]
-        top_frame = row[9] if "top_frame_site_key" in columns else ""
-        same_site = row[10] if "samesite" in columns else -1
+        optional_index = 9
+        top_frame = ""
+        if "top_frame_site_key" in columns:
+            top_frame = row[optional_index]
+            optional_index += 1
+        same_site = row[optional_index] if "samesite" in columns else -1
         if top_frame or domain not in (host_key or ""):
             continue
         value = _decrypt_cookie_value(encrypted_value, key) or plain_value

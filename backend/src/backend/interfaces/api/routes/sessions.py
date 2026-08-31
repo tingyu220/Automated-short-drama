@@ -37,7 +37,7 @@ def list_sessions():
 @router.post("/sessions/{platform}/check")
 def check_session(platform: str):
     """重新检查指定平台登录态。"""
-    return _service().check(platform).__dict__
+    return _service().check_live(platform).__dict__
 
 
 @router.post("/sessions/{platform}/storage")
@@ -71,6 +71,13 @@ def finish_login(platform: str):
     """用户确认已完成登录，立即保存当前 Session。"""
     finished = _login_manager.finish(platform)
     return {"platform": platform, "finished": finished}
+
+
+@router.post("/sessions/{platform}/reset")
+def reset_login(platform: str):
+    """强制重置登录状态（用于浏览器崩溃后按钮卡住）。"""
+    _login_manager.reset(platform)
+    return {"platform": platform, "reset": True}
 
 
 @router.post("/sessions/{platform}/chrome-import")

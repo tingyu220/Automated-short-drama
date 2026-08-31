@@ -4,15 +4,31 @@ from __future__ import annotations
 from typing import Any
 
 from backend.domain.errors.domain_error import ConfigurationError, ExternalAdapterError
-from backend.domain.plans.plan_spec import PlanSpec
+from backend.domain.plans.delivery_form_spec import DeliveryFormSpec
 
 
 RESULT_UNCERTAIN = "RESULT_UNCERTAIN"
 _PLAN_FORM_FIELDS = (
     "plan_task_name",
+    "plan_type",
     "plan_account_cid",
-    "plan_product",
+    "plan_douyin_account",
+    "plan_account_open_preset",
+    "plan_ad_preset",
     "plan_promotion_config",
+    "plan_material",
+    "plan_title_package",
+    "plan_title_shuffle_button",
+    "plan_project_rule",
+    "plan_ad_rule",
+    "plan_material_average",
+    "plan_title_average",
+    "plan_material_group_count",
+    "plan_ad_limit",
+    "plan_project_count",
+    "plan_submit_button",
+    "confirm_submit_button",
+    "task_row",
 )
 
 
@@ -23,21 +39,59 @@ class PlanSubmitPage:
         self._page = page
         self._selectors = selectors
 
-    def submit(self, plan_spec: PlanSpec) -> str:
-        """按 PlanSpec 填写计划表单并提交，未读到任务 ID 视为结果不确定."""
+    def fill(self, form: DeliveryFormSpec) -> None:
+        """严格填写全部表单数据；只要契约或选择器缺失就不触发提交。"""
         self._require_plan_selectors()
         self._page.goto(self._selectors["base_url"])
-        self._page.locator(self._selectors["plan_task_name"]).fill(plan_spec.task_name)
-        first_cid = (plan_spec.account_cids or [""])[0]
-        self._page.locator(self._selectors["plan_account_cid"]).fill(first_cid)
-        self._page.locator(self._selectors["plan_product"]).fill(
-            plan_spec.product_id or ""
+        self._page.locator(self._selectors["plan_task_name"]).fill(form.task_name)
+        self._page.locator(self._selectors["plan_type"]).fill(form.plan_type)
+        for index, row in enumerate(form.cid_rows):
+            values = {
+                "plan_account_cid": row.cid,
+                "plan_douyin_account": row.douyin_account,
+                "plan_account_open_preset": row.account_open_preset,
+                "plan_ad_preset": row.ad_preset,
+                "plan_promotion_config": row.promotion_content,
+            }
+            for key, value in values.items():
+                self._page.locator(
+                    self._selectors[key].format(index=index)
+                ).fill(value)
+        for index, material_id in enumerate(form.material_ids):
+            self._page.locator(
+                self._selectors["plan_material"].format(index=index)
+            ).fill(material_id)
+        for index, title_package in enumerate(form.title_packages):
+            self._page.locator(
+                self._selectors["plan_title_package"].format(index=index)
+            ).fill(title_package)
+        self._page.locator(self._selectors["plan_project_rule"]).fill(
+            form.project_rule
         )
-        # 领域模型暂无独立推广配置 ID，暂以首个推广链接作为推广内容
-        promotion_config = next(iter(plan_spec.link_set.values()), "")
-        self._page.locator(self._selectors["plan_promotion_config"]).fill(
-            promotion_config
+        self._page.locator(self._selectors["plan_ad_rule"]).fill(form.ad_rule)
+        self._page.locator(self._selectors["plan_material_average"]).fill(
+            "开启" if form.material_average_enabled else "关闭"
         )
+        self._page.locator(self._selectors["plan_title_average"]).fill(
+            "开启" if form.title_average_enabled else "关闭"
+        )
+        self._page.locator(self._selectors["plan_material_group_count"]).fill(
+            str(form.material_group_count)
+        )
+        self._page.locator(self._selectors["plan_ad_limit"]).fill(
+            str(form.ad_limit_per_project)
+        )
+        self._page.locator(self._selectors["plan_project_count"]).fill(
+            str(form.project_count)
+        )
+        if form.shuffle_titles_once:
+            self._page.locator(
+                self._selectors["plan_title_shuffle_button"]
+            ).click()
+
+    def submit(self, form: DeliveryFormSpec) -> str:
+        """先完整填写，再执行唯一一次提交与确认。"""
+        self.fill(form)
         self._page.locator(self._selectors["plan_submit_button"]).click()
         self._page.locator(self._selectors["confirm_submit_button"]).click()
         task_id = (

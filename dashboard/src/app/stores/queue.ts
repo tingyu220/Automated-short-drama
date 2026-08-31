@@ -6,6 +6,7 @@ import { toErrorMessage } from "@/shared/api/error-handler"
 export interface QueueItem {
   id: string
   task_id: string
+  drama_name?: string | null
   state: string
   priority: number
   available_at: string
@@ -13,6 +14,8 @@ export interface QueueItem {
   lease_until: string | null
   attempt_count: number
   next_run_at: string | null
+  failure_code: string | null
+  retry_safe: boolean
   created_at?: string | null
   updated_at?: string | null
 }

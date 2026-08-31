@@ -59,6 +59,20 @@ class DeliveryConfigSnapshotService:
                 merged.append(edited)
         return merged
 
+    def task_resources(self, drama_name: str) -> dict:
+        """读取剧目级真实素材与标题包；禁止跨剧目模糊回退。"""
+        payload = self._read("delivery_task_resources.json")
+        tasks = payload.get("tasks")
+        if not isinstance(tasks, dict) or drama_name not in tasks:
+            raise KeyError(f"未配置剧目资源: {drama_name}")
+        resource = tasks[drama_name]
+        if not isinstance(resource, dict):
+            raise ValueError(f"剧目资源格式错误: {drama_name}")
+        return {
+            "material_ids": list(resource.get("material_ids") or []),
+            "title_packages": list(resource.get("title_packages") or []),
+        }
+
     def save_mapping_proposal(self, rows: list[dict]) -> dict:
         """保存用户在面板上的 CID 映射修改，覆盖自动同步默认值。"""
         if not rows:

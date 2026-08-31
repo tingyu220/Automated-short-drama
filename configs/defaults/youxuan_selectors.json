@@ -1,0 +1,8 @@
+{
+  "base_url": "http://duanju.youxuan2.cn",
+  "video_info_url": "/video/info",
+  "login_url": "/login",
+  "selectors": {
+    "_comment": "桩配置，后续根据 youxuan2 平台实际页面结构填充"
+  }
+}

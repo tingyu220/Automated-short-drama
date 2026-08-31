@@ -25,7 +25,7 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA busy_timeout=30000")
     cursor.close()
 
 
@@ -48,6 +48,7 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     connect_args = {}
     if "sqlite" in url:
         connect_args["check_same_thread"] = False
+        connect_args["timeout"] = 30
 
     engine = create_engine(url, connect_args=connect_args)
 

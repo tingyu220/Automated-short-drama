@@ -62,3 +62,26 @@ def test_save_mapping_proposal_overrides_snapshot(tmp_path):
 
     assert saved["count"] == 1
     assert service.mapping_proposal()[0]["ad_preset"] == "手动广告预设"
+
+
+def test_task_resources_requires_exact_drama_entry(tmp_path):
+    _write_snapshot(tmp_path)
+    (tmp_path / "delivery_task_resources.json").write_text(
+        json.dumps(
+            {
+                "tasks": {
+                    "剧A": {
+                        "material_ids": ["m1", "m2"],
+                        "title_packages": [f"t{i}" for i in range(6)],
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    service = DeliveryConfigSnapshotService(extracted_dir=tmp_path)
+
+    assert service.task_resources("剧A")["material_ids"] == ["m1", "m2"]
+    with pytest.raises(KeyError, match="剧B"):
+        service.task_resources("剧B")

@@ -3,13 +3,12 @@ import { computed } from "vue"
 import { ElButton } from "element-plus"
 import EmptyState from "@/shared/ui/EmptyState.vue"
 import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
-import WorkflowTimeline from "@/widgets/workflow-timeline/WorkflowTimeline.vue"
+import LinkReadinessTimeline from "@/widgets/link-readiness-timeline/LinkReadinessTimeline.vue"
 import {
-  buildWorkflowSteps,
+  buildLinkReadinessStages,
   formatDuration,
   type QueueItemView,
-  type TaskBase,
-  type WorkflowStepNode
+  type TaskBase
 } from "@/entities/task/types"
 import { getStatusLabel } from "@/shared/utils/status"
 
@@ -38,8 +37,8 @@ const emit = defineEmits<{
   (e: "open-platform"): void
 }>()
 
-const steps = computed<WorkflowStepNode[]>(() =>
-  buildWorkflowSteps(props.currentStep)
+const stages = computed(() =>
+  buildLinkReadinessStages(props.currentStep, props.task?.status)
 )
 
 const duration = computed(() => formatDuration(props.task?.updated_at))
@@ -53,7 +52,7 @@ const stageLabel = computed(() =>
     <header class="current-task__header">
       <div>
         <h2 class="current-task__title">当前运行任务</h2>
-        <p class="current-task__subtitle">自动化流程实时进度</p>
+        <p class="current-task__subtitle">链接提取与投放系统搭建实时进度</p>
       </div>
       <div v-if="task" class="current-task__actions">
         <ElButton size="small" @click="emit('open-platform')">打开平台</ElButton>
@@ -101,7 +100,7 @@ const stageLabel = computed(() =>
         </div>
       </dl>
       <div class="current-task__timeline">
-        <WorkflowTimeline :steps="steps" />
+        <LinkReadinessTimeline :stages="stages" compact />
       </div>
     </template>
   </section>
@@ -112,7 +111,7 @@ const stageLabel = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: 320px;
+  min-height: 280px;
   padding: 20px;
   background: var(--color-bg-panel);
   border: 1px solid #e5e7eb;
@@ -180,9 +179,8 @@ const stageLabel = computed(() =>
 
 .current-task__timeline {
   margin-top: auto;
-  padding: 16px;
-  background: var(--color-bg-panel-secondary);
-  border-radius: var(--radius-card);
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
 }
 
 @media (max-width: 1200px) {

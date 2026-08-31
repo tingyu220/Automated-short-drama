@@ -46,4 +46,17 @@ watch(
   justify-content: flex-end;
   padding-top: 4px;
 }
+
+@media (max-width: 720px) {
+  .pagination-bar {
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .pagination-bar :deep(.el-pagination__total),
+  .pagination-bar :deep(.el-pagination__sizes),
+  .pagination-bar :deep(.el-pagination__jump) {
+    display: none;
+  }
+}
 </style>

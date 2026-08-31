@@ -1,7 +1,8 @@
-"""账户 API 路由：V1 使用内存 Mock 账户表，仅提供概览与分配预览。"""
+"""账户 API 路由：概览和预览统一读取当前运行模式的账户事实源。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from typing import Literal
 
 from fastapi import APIRouter
@@ -12,7 +13,10 @@ from backend.application.services.account_allocation_service import (
     BlockAllocation,
 )
 from backend.domain.rules.account_block import AccountRow
+from backend.domain.errors.domain_error import ConfigurationError
+from backend.infrastructure.config.settings import Settings
 from backend.interfaces.api.schemas import AccountOverviewView
+from backend.platforms.feishu.feishu_adapter import FeishuAdapter
 from backend.platforms.mock.mock_account_table import MOCK_ACCOUNT_ROWS
 
 router = APIRouter(tags=["accounts"])
@@ -62,35 +66,55 @@ def _find_allocation(
     service: AccountAllocationService,
     block_type: str,
     allocated_cids: list[str],
+    rows: list[AccountRow],
 ) -> BlockAllocation | None:
-    """按块类型在 Mock 表中查找首个可用块。"""
+    """按块类型在当前账户快照中查找首个可用块。"""
     allocated = set(allocated_cids)
     if block_type == "IAA":
-        return service.find_iaa_block(MOCK_ACCOUNT_ROWS, allocated)
+        return service.find_iaa_block(rows, allocated)
     if block_type == "IAP":
         return service.find_iap_block(
-            MOCK_ACCOUNT_ROWS, allocated, {"9.9", "2.9"}
+            rows, allocated, {"9.9", "2.9"}
         )
     return None
 
 
 @router.get("/accounts/overview", response_model=AccountOverviewView)
 def account_overview() -> AccountOverviewView:
-    """返回内存 Mock 账户概览。"""
+    """返回当前运行模式下的账户概览。"""
+    mode, rows = _account_source()
     return AccountOverviewView(
-        sync_status="mock",
+        sync_status=mode,
         last_synced_at=datetime.now(timezone.utc),
-        accounts=[_account_summary(row) for row in MOCK_ACCOUNT_ROWS],
+        accounts=[_account_summary(row) for row in rows],
     )
 
 
 @router.post("/accounts/allocate-preview")
 def allocate_preview(payload: _AllocatePreviewRequest) -> dict:
     """预览首个可用账户块；只返回计划，不写入任何数据。"""
+    _mode, rows = _account_source()
     service = AccountAllocationService(payload.drama_name)
     allocation = _find_allocation(
-        service, payload.block_type, payload.allocated_cids
+        service, payload.block_type, payload.allocated_cids, rows
     )
     if allocation is None:
         return {"found": False}
     return _allocation_payload(allocation)
+
+
+def _account_source() -> tuple[str, list[AccountRow]]:
+    settings = Settings()
+    if not settings.use_real_adapters:
+        return "mock", list(MOCK_ACCOUNT_ROWS)
+    url = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_URL", "").strip()
+    if not url:
+        raise ConfigurationError(
+            "真实账户概览缺少 WORKBUDDY_FEISHU_TASK_SHEET_URL"
+        )
+    name = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_NAME", "剧目表").strip()
+    adapter = FeishuAdapter(url, name, dry_run=True)
+    return "real", [
+        *adapter.read_account_rows("IAA"),
+        *adapter.read_account_rows("IAP"),
+    ]

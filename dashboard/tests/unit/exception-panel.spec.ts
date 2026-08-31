@@ -26,6 +26,8 @@ function makeItem(overrides: Partial<ExceptionItem> = {}): ExceptionItem {
     risk_color: "var(--color-status-failed)",
     category: "login_required",
     category_label: "需要重新登录",
+    failure_code: "AUTH_EXPIRED",
+    failure_details: { platform: "TOMATO" },
     stack_trace: "Traceback ...",
     ...overrides
   }
@@ -103,15 +105,17 @@ describe("ExceptionPanel", () => {
     const row = wrapper.find(".exception-panel__row")
     await row.trigger("click")
     expect(wrapper.text()).toContain("错误原因")
+    expect(wrapper.text()).toContain("AUTH_EXPIRED")
+    expect(wrapper.text()).toContain("platform：TOMATO")
     expect(wrapper.text()).toContain("系统判断")
 
     const button = wrapper
       .findAll("button")
-      .find((item) => item.text().includes("修改配置"))
+      .find((item) => item.text().includes("查看任务"))
     expect(button).toBeTruthy()
     await button?.trigger("click")
     expect(wrapper.emitted("action")).toEqual([
-      [{ item: makeItem(), action: "modify_config" }]
+      [{ item: makeItem(), action: "view_task" }]
     ])
   })
 

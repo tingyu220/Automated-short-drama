@@ -1,28 +1,27 @@
-# Phase 10 交付总结：主链路接线与 Mock 全链路
+# Phase 10 交付总结：生产链路加固与安全闭环
 
 ## 范围
 
 - 剧目扫描调度与自动入队：`DeliveryScheduler` + Control Server 调度线程
 - Worker 执行循环：心跳 → 队列推进 → 领取 → 真实编排执行 → 事件/台账 → 完成/人工
-- 账户块分配服务与账户概览：IAA 3+3+3+1、IAP 3+3、测试户默认 IAA-B4、分配预览 API
-- Worker 真实编排执行器：链接提取 → 账户分配 → PlanSpec → 标准投放 → 完成
+- 账户块分配：IAA 3+3+3+1、IAP 3+3、测试户 IAA-B4、条件整块写入、回读、追加块和同日 CID 唯一占用
+- Worker 真实编排：E 时间到点准备并冻结链接 → 真实配置校验 → 账户分配 → DeliveryFormSpec → 标准投放 → 对账/轮询 → 完成
 
-## 验收结果（2026-08-07）
+## 验收结果（2026-08-10）
 
-- backend pytest：545 passed
-- verify-phase9：single/three/five/ten 全 PASS
-- verify-phase10：Mock 全链路 4 passed
-- codegraph：275 files、4132 nodes、10489 edges（Phase 10 后已同步）
+- backend pytest：672 passed（最终全量检查）
+- Phase 10：番茄真实编排 Mock、冻结快照零二次调用、Dry Run、账户不足、剧变直读全部通过
+- Dashboard：Dry Run 显示为“演练完成”，不再映射成功
 
 ## Mock 全链路覆盖
 
-- TOMATO：扫描 → 入队 → 领取 → 链接提取 → 账户分配 → 标准投放 → COMPLETED + 台账 + 事件；不写飞书 J/K/L。
+- TOMATO：扫描 → 等待 E 时间 → 领取 → 提取并冻结 → 账户分配 → 标准投放 → COMPLETED + 台账 + 事件；真实模式回填 J/K/L，Dry Run 零写入。
 - 账户全部占用：MANUAL_REVIEW + ERROR 事件，无台账。
-- JUBIAN：暂返回 MANUAL_REVIEW，后续接入表内 J/K/L 链接。
-- 默认 `WORKBUDDY_ALLOW_FINAL_SUBMIT=false`：本地流程 COMPLETED，提交被安全开关拦截并记录 WARNING 事件。
+- JUBIAN：直接冻结表内 J/K/L，不进入番茄。
+- 默认 `WORKBUDDY_ALLOW_FINAL_SUBMIT=false`：终态为 DRY_RUN，无台账、无 M=1、无账户和链接远程写入。
 
-## 遗留项
+## 上线前外部验收项
 
-- 真实链路：Playwright page、真实飞书账户表读取/回写、JUBIAN 表内链接、M=1 延迟写入/补偿。
-- DRY_RUN 台账状态区分、`worker_executor.py` 拆分、账户表真实数据源。
-- whole-branch review 的 Important 4-9（分层约束、规则闭环、完成幂等、并发原子、状态联动、前后端契约）待后续任务。
+- 在实际登录态下复核三套页面选择器；当前代码会对缺失选择器安全失败，不会猜测点击。
+- 为每部待投剧配置真实素材 ID、6 个标题包及 CID 映射后，再从单部 Dry Run 开始逐级验收。
+- 前端主包仍有约 954 kB 的构建警告，本次不做无关拆包重构。

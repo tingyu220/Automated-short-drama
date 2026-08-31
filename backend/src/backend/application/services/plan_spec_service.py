@@ -48,6 +48,10 @@ class PlanSpecBuilder:
         material_ranges: list[MaterialRuleRange],
         rule_version: str | None,
         include_test: bool = False,
+        *,
+        material_ids: list[str] | None = None,
+        title_packages: list[str] | None = None,
+        now: datetime | None = None,
     ) -> PlanSpec:
         """生成链接集、账户映射、推广配置、素材分组与任务名称。"""
         link_set = {
@@ -74,7 +78,7 @@ class PlanSpecBuilder:
             task.platform,
             task.drama_name,
             task.available_time.date(),
-            datetime.now(timezone.utc),
+            now or datetime.now(timezone.utc),
             plan_type,
         )
 
@@ -88,6 +92,8 @@ class PlanSpecBuilder:
             promotion_configs=promotion_configs,
             material_groups=material_groups,
             expected_project_count=material_groups.project_count,
+            material_ids=list(material_ids or []),
+            title_packages=list(title_packages or []),
             rule_version=rule_version,
         )
 

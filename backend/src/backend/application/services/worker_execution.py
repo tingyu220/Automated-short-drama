@@ -21,6 +21,10 @@ from backend.domain.tasks.drama_task import DramaTask, TaskStatus
 STATUS_COMPLETED = "COMPLETED"
 STATUS_MANUAL_REVIEW = "MANUAL_REVIEW"
 STATUS_FAILED = "FAILED"
+STATUS_DRY_RUN = "DRY_RUN"
+STATUS_LINK_EXTRACTED = "LINK_EXTRACTED"
+STATUS_LINK_READY = "LINK_READY"
+_LINK_TERMINAL_STATUSES = {STATUS_LINK_EXTRACTED, STATUS_LINK_READY}
 
 
 @dataclass
@@ -31,6 +35,8 @@ class ExecutionOutcome:
     external_task_id: str | None = None
     ledger_fields: dict = field(default_factory=dict)
     events: list[ExecutionEvent] = field(default_factory=list)
+    failure_code: str | None = None
+    retry_safe: bool = False
 
 
 @dataclass
@@ -86,11 +92,29 @@ class WorkerExecutionService:
             STATUS_COMPLETED,
             STATUS_MANUAL_REVIEW,
             STATUS_FAILED,
+            STATUS_DRY_RUN,
+            STATUS_LINK_EXTRACTED,
+            STATUS_LINK_READY,
         ):
             raise ValueError(f"未知执行结果状态: {outcome.status}")
         events = self._build_events(task, outcome, now)
         for execution_event in events:
             self._event_repo.add_event(execution_event)
+
+        if outcome.status in _LINK_TERMINAL_STATUSES:
+            item.state = QueueStateMachine.transition(
+                item.state, QueueState.COMPLETED
+            )
+            item.failure_code = None
+            item.retry_safe = False
+            self._queue_repo.update(item)
+            task.status = outcome.status
+            self._task_repo.update(task)
+            return CycleResult(
+                queue_item_id=item.id,
+                final_queue_state=item.state,
+                event_count=len(events),
+            )
 
         if outcome.status == STATUS_COMPLETED:
             ledger = self._complete(item, outcome)
@@ -102,6 +126,8 @@ class WorkerExecutionService:
             )
 
         item.state = QueueStateMachine.transition(item.state, outcome.status)
+        item.failure_code = outcome.failure_code
+        item.retry_safe = outcome.retry_safe
         self._queue_repo.update(item)
         task.status = outcome.status
         self._task_repo.update(task)
@@ -155,7 +181,12 @@ class WorkerExecutionService:
         """组合 outcome 事件；非完成结果保证至少一条 ERROR 事件。"""
         events = list(outcome.events)
         if (
-            outcome.status != STATUS_COMPLETED
+            outcome.status not in (
+                STATUS_COMPLETED,
+                STATUS_DRY_RUN,
+                STATUS_LINK_EXTRACTED,
+                STATUS_LINK_READY,
+            )
             and not any(e.level == EventLevel.ERROR for e in events)
         ):
             events.append(
@@ -171,24 +202,16 @@ class WorkerExecutionService:
 
 
 def mock_worker_executor() -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
-    """默认 Mock executor：直接返回 COMPLETED（Task 10.4 替换真实 executor）。"""
+    """旧 Mock executor：只产生演练终态，绝不伪造真实完成副作用。"""
 
     def execute(task: DramaTask, _item: QueueItem) -> ExecutionOutcome:
         return ExecutionOutcome(
-            status=STATUS_COMPLETED,
-            external_task_id="mock-external-1",
-            ledger_fields={
-                "album_id": "album-mock",
-                "product_id": "product-mock",
-                "task_name": "mock-task",
-                "rule_version": "1.0",
-                "config_version": "1.0",
-            },
+            status=STATUS_DRY_RUN,
             events=[
                 ExecutionEvent(
                     task_id=task.id,
                     event_type="MOCK_EXECUTED",
-                    message="Mock 执行完成，Task 10.4 替换真实 executor",
+                    message="Mock 演练完成，未执行真实提交",
                     level=EventLevel.INFO,
                 )
             ],

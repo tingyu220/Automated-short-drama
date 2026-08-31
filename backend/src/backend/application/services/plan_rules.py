@@ -10,6 +10,22 @@ from backend.domain.rules.material_rule_range import MaterialRuleRange
 
 LINK_TYPES = ("IAA", "9.9", "2.9")
 
+PLATFORM_LABELS = {
+    "TOMATO": "番茄",
+    "JUBIAN": "剧变",
+    "OCEAN": "巨量",
+    "DELIVERY": "投放系统",
+}
+
+
+def build_promotion_config_name(
+    link_type: str, platform: str, drama_name: str
+) -> str:
+    """生成推广内容配置名: {prefix}-{中文平台}-{剧名}。"""
+    prefix = PromotionContentMappingRule._PREFIXES.get(link_type, link_type.lower())
+    platform_label = PLATFORM_LABELS.get(platform, platform)
+    return f"{prefix}-{platform_label}-{drama_name}"
+
 PLAN_TYPE_PAID = "端付"
 PLAN_TYPE_FREE = "端免"
 PLAN_TYPE_TEST = "测试"
@@ -97,9 +113,9 @@ class PromotionContentMappingRule:
         drama_name: str,
         link_types: set[str],
     ) -> dict[str, str]:
-        """返回 {链接类型: f"{prefix}-{platform}-{drama_name}"}。"""
+        """返回 {链接类型: 配置名}，格式: {prefix}-{中文平台}-{剧名}。"""
         return {
-            link_type: f"{self._PREFIXES[link_type]}-{platform}-{drama_name}"
+            link_type: build_promotion_config_name(link_type, platform, drama_name)
             for link_type in LINK_TYPES
             if link_type in link_types
         }

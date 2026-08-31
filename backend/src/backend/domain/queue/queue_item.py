@@ -16,6 +16,7 @@ class QueueState:
     PAUSED = "PAUSED"
     MANUAL_REVIEW = "MANUAL_REVIEW"
     FAILED = "FAILED"
+    DRY_RUN = "DRY_RUN"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
@@ -32,6 +33,8 @@ class QueueItem:
     lease_until: datetime | None = None
     attempt_count: int = 0
     next_run_at: datetime | None = None
+    failure_code: str | None = None
+    retry_safe: bool = False
     id: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

@@ -130,12 +130,13 @@ class TestPauseTask:
         assert item.claimed_by == "worker-A"
 
     def test_pause_invalid_state_raises_conflict(self):
-        item = make_item("qi-1", QueueState.COMPLETED)
-        queue_repo = FakeQueueRepository({"qi-1": item})
-        task_repo = FakeTaskRepository()
+        for state in (QueueState.COMPLETED, QueueState.CANCELLED, QueueState.DRY_RUN):
+            item = make_item("qi-1", state)
+            queue_repo = FakeQueueRepository({"qi-1": item})
+            task_repo = FakeTaskRepository()
 
-        with pytest.raises(ConflictError):
-            pause_task(queue_repo, task_repo, "qi-1", "worker-1")
+            with pytest.raises(ConflictError, match="已处于终态"):
+                pause_task(queue_repo, task_repo, "qi-1", "worker-1")
 
     def test_pause_nonexistent_raises_not_found(self):
         queue_repo = FakeQueueRepository()
@@ -216,7 +217,7 @@ class TestCancelTask:
         assert result.lease_until is None
 
     def test_cancel_terminal_raises_conflict(self):
-        for state in (QueueState.COMPLETED, QueueState.CANCELLED):
+        for state in (QueueState.COMPLETED, QueueState.CANCELLED, QueueState.DRY_RUN):
             item = make_item("qi-1", state)
             queue_repo = FakeQueueRepository({"qi-1": item})
             task_repo = FakeTaskRepository()
@@ -315,6 +316,37 @@ class TestRetryTask:
 
         with pytest.raises(NotFoundError):
             retry_task(queue_repo, task_repo, "missing")
+
+    def test_result_uncertain_retry_is_blocked_until_reconciled(self):
+        item = QueueItem(
+            id="qi-uncertain",
+            task_id="task-1",
+            state=QueueState.MANUAL_REVIEW,
+            failure_code="RESULT_UNCERTAIN",
+            retry_safe=False,
+        )
+        queue_repo = FakeQueueRepository({item.id: item})
+        task_repo = FakeTaskRepository()
+
+        with pytest.raises(ConflictError):
+            retry_task(queue_repo, task_repo, item.id)
+
+    def test_result_uncertain_retry_is_allowed_after_absence_confirmed(self):
+        item = QueueItem(
+            id="qi-uncertain",
+            task_id="task-1",
+            state=QueueState.MANUAL_REVIEW,
+            failure_code="RESULT_UNCERTAIN",
+            retry_safe=True,
+        )
+        queue_repo = FakeQueueRepository({item.id: item})
+        task_repo = FakeTaskRepository()
+
+        result = retry_task(queue_repo, task_repo, item.id)
+
+        assert result.state == QueueState.QUEUED
+        assert result.failure_code is None
+        assert result.retry_safe is False
 
 
 class TestTaskStatusSync:

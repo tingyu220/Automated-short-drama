@@ -22,6 +22,99 @@ export interface WorkflowStepNode {
   status: WorkflowNodeStatus
 }
 
+export type LinkReadinessStageStatus = "done" | "current" | "pending" | "failed"
+
+export interface LinkReadinessStageNode {
+  key: string
+  label: string
+  detail: string
+  status: LinkReadinessStageStatus
+}
+
+export const LINK_READINESS_STAGES: Omit<
+  LinkReadinessStageNode,
+  "status"
+>[] = [
+  {
+    key: "WAITING_AVAILABLE_TIME",
+    label: "等待上线时间",
+    detail: "到点后开始处理"
+  },
+  {
+    key: "LINK_EXTRACTION",
+    label: "提取番茄链接",
+    detail: "搜索、复用或创建链接"
+  },
+  {
+    key: "DELIVERY_DRAMA",
+    label: "搭建投放剧目",
+    detail: "复用或创建剧目资源"
+  },
+  {
+    key: "PROMOTION_CONFIG",
+    label: "搭建推广内容",
+    detail: "按链接复用或创建配置"
+  },
+  {
+    key: "LINK_READY",
+    label: "链接已就绪",
+    detail: "可以直接上剧"
+  }
+]
+
+const LINK_READINESS_STAGE_INDEX = new Map(
+  LINK_READINESS_STAGES.map((stage, index) => [stage.key, index])
+)
+
+export function buildLinkReadinessStages(
+  currentStage?: string | null,
+  taskStatus?: string | null,
+  steps: Array<Pick<LinkStageRun, "step_name" | "status">> = []
+): LinkReadinessStageNode[] {
+  const currentKey = currentStage?.toUpperCase() ?? ""
+  const normalizedStatus = taskStatus?.toUpperCase() ?? ""
+  const extractedOnly = normalizedStatus === "LINK_EXTRACTED"
+  const terminal =
+    currentKey === "LINK_READY" ||
+    normalizedStatus === "LINK_READY" ||
+    normalizedStatus === "COMPLETED"
+  const failedStep = steps.find((step) =>
+    ["FAILED", "ERROR", "MANUAL_REVIEW"].includes(step.status.toUpperCase())
+  )
+  const failedKey = failedStep?.step_name?.toUpperCase() ?? ""
+  const activeKey = extractedOnly ? "LINK_EXTRACTION" : currentKey
+  const activeIndex = LINK_READINESS_STAGE_INDEX.get(activeKey) ?? -1
+  const failedIndex = LINK_READINESS_STAGE_INDEX.get(failedKey) ?? -1
+
+  return LINK_READINESS_STAGES.map((stage, index) => {
+    let status: LinkReadinessStageStatus = "pending"
+    if (terminal || (extractedOnly && index <= 1)) {
+      status = "done"
+    } else if (failedIndex === index || (normalizedStatus === "FAILED" || normalizedStatus === "MANUAL_REVIEW") && activeIndex === index) {
+      status = "failed"
+    } else if (index < activeIndex) {
+      status = "done"
+    } else if (index === activeIndex && activeIndex >= 0) {
+      status = "current"
+    }
+    return { ...stage, status }
+  })
+}
+
+export function getLinkReadinessStageLabel(
+  currentStage?: string | null,
+  taskStatus?: string | null
+): string {
+  const normalizedStatus = taskStatus?.toUpperCase() ?? ""
+  if (normalizedStatus === "LINK_EXTRACTED") return "链接已提取"
+  if (normalizedStatus === "COMPLETED") return "链接已就绪"
+  const normalizedStage = currentStage?.toUpperCase() ?? ""
+  return (
+    LINK_READINESS_STAGES.find((stage) => stage.key === normalizedStage)?.label ??
+    "未开始"
+  )
+}
+
 export const WORKFLOW_STEPS: WorkflowStepNode[] = [
   { key: "feishu", label: "飞书", status: "pending" },
   { key: "link", label: "链接", status: "pending" },
@@ -76,10 +169,13 @@ export interface TaskBase {
   id: string
   drama_name: string
   platform: string
+  end_type: string
   available_time: string
   status: string
   owner: string | null
   queue_state: string | null
+  current_stage?: string | null
+  target_stage?: string | null
   updated_at: string
 }
 
@@ -93,11 +189,19 @@ export interface TaskView extends TaskBase {
   plan_spec?: string | null
   plan_status?: string | null
   exception_status?: string | null
+  link_set?: Record<string, string>
+  delivery_drama_id?: string | null
+  promotion_configs?: Record<string, string>
+  steps?: LinkStageRun[]
+  failure_code?: string | null
+  drama_match_candidates?: Array<Record<string, unknown>>
+  confirmed_drama_match?: Record<string, string> | null
 }
 
 export interface QueueItemView {
   id: string
   task_id: string
+  drama_name?: string | null
   state: string
   priority: number
   available_at: string
@@ -105,6 +209,8 @@ export interface QueueItemView {
   lease_until: string | null
   attempt_count: number
   next_run_at: string | null
+  failure_code: string | null
+  retry_safe: boolean
   created_at?: string | null
   updated_at?: string | null
 }
@@ -137,12 +243,23 @@ export interface WorkflowRunItem {
   screenshot?: string | null
 }
 
+export interface LinkStageRun {
+  step_name: string
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  result_json?: Record<string, unknown> | null
+  error_code?: string | null
+  error_message?: string | null
+}
+
 export type TaskAction =
   | "manual_enqueue"
   | "pause"
   | "resume"
   | "retry"
   | "cancel"
+  | "delete"
 
 export function toTaskView(
   task: TaskBase,

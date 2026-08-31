@@ -7,7 +7,7 @@
 - 从飞书剧目表读取任务，按投放时间自动入队；
 - 从番茄平台提取 IAA / IAP 推广链接并回填飞书表；
 - 将链接流转到投放系统：识别/创建剧目资源、推广内容配置、标准投放计划；
-- 在巨量平台建立产品库并生成 PlanSpec；
+- 生成不包含商品库字段的 PlanSpec；商品库由投放系统自动配置；
 - 轮询投放系统/巨量引擎 V2 任务状态，`已完成` 后回写飞书表完成标记；
 - 通过企业级 Dashboard 提供任务、队列、规则、异常、日志的统一视图。
 
@@ -21,7 +21,7 @@ V1 目标不是“从页面点击开始”，而是先建立可恢复、可配�
 - 任务队列与双层状态机、Worker 租约/心跳/崩溃恢复；
 - 番茄链接提取（IAA + IAP）与回填；
 - 投放系统剧目资源、推广内容配置；
-- 巨量产品库建产品（先 Mock，后真实适配）；
+- 商品库由投放系统自动配置；不创建、不修改、不校验商品库；
 - PlanSpec 生成与提交保护（默认 `ALLOW_FINAL_SUBMIT=false`）；
 - 轮询任务状态，完成后写 M=1；
 - Dashboard 工作台、今日任务、队列、计划管理、规则与配置、异常中心、系统记录；
@@ -61,7 +61,7 @@ application/services + workflows + commands + queries + ports
         ↓
 domain/tasks + queue + workflow + rules + plans + assets + errors
         ↓
-platforms/feishu + tomato + delivery_system + ocean_engine
+platforms/feishu + tomato + delivery_system
         ↓
 infrastructure/database + browser + queue + logging + artifacts + config
 ```
@@ -86,10 +86,9 @@ infrastructure/database + browser + queue + logging + artifacts + config
     番茄：搜索剧目 → 免费入口提取 IAA 链接
           → 付费入口扫描模板 → 提取 9.9/2.9 链接
     剧变：直接使用表内已有 J/K/L 链接，不进入番茄
-→ 回填 J/K/L 到飞书剧目表（失败原因仅存本地）
-→ 投放系统：识别/创建剧目资源（delivery_drama_id / album_id）
+→ 回填 J/K/L 到飞书剧目表并冻结链接快照（失败原因仅存本地）
+→ 到点后投放系统：识别/创建剧目资源
 → 推广内容配置：iaa-平台-剧名 / 9.9-平台-剧名 / 2.9-平台-剧名
-→ 巨量产品库：创建剧目产品，产品 ID 进入 PlanSpec
 → 取账户：iaa/iap 账户表找第一个完整可用块，整块回填剧名
 → 生成 PlanSpec 并校验
 → 提交标准投放计划（ALLOW_FINAL_SUBMIT=true 时才真提交）
@@ -251,14 +250,14 @@ SQLite 稳定性配置：`journal_mode=WAL`、`foreign_keys=ON`、`busy_timeout=
 FeishuAdapter        剧目表/账户表读写、N 状态读取、链接回填、M 写入
 TomatoAdapter        番茄搜索/登录态/免费付费入口/链接提取（DOM 优先，剪贴板兜底）
 DeliverySystemAdapter 剧目资源、推广内容配置、计划提交、任务状态轮询
-OceanEngineAdapter   巨量产品库建产品（先 Mock，后真实）
+OceanEngineAdapter   已移除；商品库由投放系统自动配置
 ```
 
 - 每个平台先 Mock，再只读验证，再“填写但不提交”，最后单条/批次提交；
-- 每个平台独立持久化浏览器 Session；
+- 投放执行固定单个持久化登录上下文、单标签页、单 Worker 串行复用；不按任务多开浏览器。
 - 番茄域名可配置，默认 `changdunovel.com`，兼容 `changdupingtai.com`；
 - 页面选择器：稳定选择器放 Page Object 代码，JSON 只放域名/页面路径/紧急覆盖选择器；优先级 role/label/text → data 属性 → CSS → XPath；
-- OceanEngineAdapter V1 只负责巨量产品库，不负责标准计划状态判断；
+- 商品库由投放系统自动配置；Worker 不访问商品库页面，也不创建或校验商品；
 - 任务完成状态以投放系统巨量引擎 V2 任务页为最终来源。
 
 ## 11. 关键业务规则摘要
@@ -281,8 +280,8 @@ OceanEngineAdapter   巨量产品库建产品（先 Mock，后真实）
 - 标准计划固定字段：创编方式=极速创建、投放方式=标准投放、推广业务=端原生；项目规则=按广告数生成、广告规则=按素材组生成、素材组平均分配=关闭、标题组平均分配=关闭；
 - 素材选择通铺：清空原有素材 → 搜索精确剧名 → 300 条/页 → 全选当前页 → 完成；校验已选素材数=剧目有效素材总数，不一致停止提交；
 - 常规素材分组：N<=30 → 1 组复制 2 次 = 3 组；30<N<=60 → 每组 ceil(N/2)、2 组各复制 2 次 = 6 组；60<N<=90 → 每组 ceil(N/3)、3 组各复制 1 次 = 6 组；N>90 → 均匀分配、每组<=30、组数=不小于 ceil(N/30) 的最小 3 的倍数；常规计划 `ad_limit_per_project=最终组数/3`、`expected_project_count=3`；
-- 测试户素材分组（T 为测试素材条数，G_test 为测试素材组数）：T<20 → 每组 2 条；T>=20 → 每组 3 条；不复制；`ad_limit=min(10,ceil(G_test/3))`、`project_count=ceil(G_test/ad_limit)`；
-- 巨量产品库固定路径：杨硕总体户 → B组李伟层级 → 资产 → 商品管理 → 通用版 → lw全域ROI3产品库；字段：投放载体=端原生、专辑ID=当前 album_id、版权方=厦门骑驰网络科技有限公司、变现模式=付费变现+流量变现；
+- 测试户素材分组（T 为测试素材条数，G_test 为测试素材组数）：T<20 → 每组 2 条；T>=20 → 每组 3 条；不复制；T<=20 固定 2 个项目，T>20 固定 3 个项目；叉乘配置使用“按广告数生成”和“按素材组生成”，两个平均分配均关闭；`ad_limit=min(10,ceil(G_test/project_count))`。
+- 商品库不进入自动化流程；开户/广告预设联动结果由投放系统自行处理。
 - RESULT_UNCERTAIN：任何创建操作超时或结果不明确 → 先查询外部平台 → 找到目标资源则补记成功 → 确认不存在才允许重试；禁止直接重复点击创建或提交。
 
 ## 12. 安全与运行约束
@@ -314,7 +313,7 @@ OceanEngineAdapter   巨量产品库建产品（先 Mock，后真实）
 
 集成测试：
 
-- Mock 全链路 Dry Run：飞书读表 → 链接提取 Mock → 投放系统 Mock → 产品库 Mock → PlanSpec → 状态轮询 Mock → M 写入（仅真实模式）；
+- Mock 全链路 Dry Run：飞书读表 → 链接提取 Mock → 投放系统 Mock → PlanSpec → 状态轮询 Mock → M 写入（仅真实模式）；
 - 失败/重试/超时/MANUAL_REVIEW 场景；
 - 飞书表真实回读校验（只读/回写后回读）。
 
@@ -322,7 +321,6 @@ OceanEngineAdapter   巨量产品库建产品（先 Mock，后真实）
 
 - 番茄免费/付费入口只读验证 → 填写不提交 → 单条提交；
 - 投放系统剧目资源、推广配置、计划提交、状态轮询；
-- 巨量产品库建产品。
 
 ## 14. 验收标准
 

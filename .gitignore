@@ -1,6 +1,10 @@
 # 本地运行数据（SQLite、会话、产物、备份）
 data/
 .codegraph/
+logs/
+*.db
+*.log
+*.err
 
 # Python
 .venv/
@@ -24,3 +28,13 @@ dist/
 vite.config.d.ts
 vitest.config.d.ts
 vitest.config.js
+
+# 本地一次性诊断与数据修复脚本
+/check_*.py
+/reset_*.py
+/verify_key*.py
+/boost_priority.py
+/dedup.py
+/backend/check_*.py
+/backend/diag_*.py
+/backend/scripts/

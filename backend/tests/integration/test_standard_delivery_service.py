@@ -79,8 +79,15 @@ def _spec() -> PlanSpec:
             "cid-iap-9-9",
             "cid-iap-2-9",
         ],
+        promotion_configs={
+            "IAA": "iaa-番茄-我的剧",
+            "9.9": "9.9-番茄-我的剧",
+            "2.9": "2.9-番茄-我的剧",
+        },
         material_groups=MaterialPlan(1, 2, 3, 1, 3),
         expected_project_count=3,
+        material_ids=[f"material-{index}" for index in range(20)],
+        title_packages=[f"title-{index}" for index in range(6)],
     )
 
 

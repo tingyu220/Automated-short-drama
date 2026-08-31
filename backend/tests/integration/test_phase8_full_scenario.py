@@ -125,6 +125,8 @@ def _build_spec(session: Session) -> PlanSpec:
         20,
         ranges,
         "v1",
+        material_ids=[f"material-{index}" for index in range(20)],
+        title_packages=[f"title-{index}" for index in range(6)],
     )
 
 

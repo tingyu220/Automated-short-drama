@@ -5,12 +5,14 @@ import {
   ElInput,
   ElInputNumber,
   ElOption,
+  ElPagination,
   ElSelect,
   ElSwitch
 } from "element-plus"
 import type { RuleSet } from "@/app/stores/rule"
 import type { MaterialRuleRange } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
+import { paginateRows, validPage } from "./pagination"
 
 export interface RuleDraftPayload {
   category: string
@@ -80,6 +82,7 @@ const props = defineProps<{
   settings?: Record<string, Record<string, any>>
   settingsOptions?: Record<string, unknown[]>
   settingsSaving?: boolean
+  versions?: { id: string; version: string; status: string; published_at: string | null }[]
 }>()
 
 const emit = defineEmits<{
@@ -106,7 +109,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 }
 
 const RESERVED_ITEMS: Record<string, string[]> = {
-  link: ["IAA 选集阈值", "IAP 模板区间", "同距离策略"],
+  link: ["IAA 选集阈值"],
   account: ["飞书账户实时读取", "账户块分配控制", "同步状态"],
   cid: ["CID", "广告预设", "抖音号", "开户预设", "主体", "投放类型", "生效时间"],
   douyin: ["抖音号列表", "启用状态"],
@@ -147,6 +150,12 @@ const PRICE_STRATEGY_OPTIONS = [
   { value: "LOWER_PRICE_FIRST", label: "同距离优先低价" }
 ]
 
+const TASK_NAMING_TEMPLATES = [
+  "<平台方>#端付<剧名称><日期>ubr-<创建日期>-<时分秒-n>",
+  "<平台方>#端免<剧名称><日期>bxr-<创建日期>-<时分秒-n>",
+  "<平台方>#测试<剧名称><日期>cbo-<创建日期>-<时分秒-n>"
+]
+
 const MATERIAL_STRATEGY_OPTIONS = [
   { value: "BASE_1_COPY_2", label: "基础1组复制2次" },
   { value: "BASE_2_COPY_2", label: "基础2组复制2次" },
@@ -175,6 +184,24 @@ function selectPriceKey(key: string) {
   selectedPriceKey.value = key
 }
 
+function addMaterialRule() {
+  materialRuleSequence += 1
+  materialRows.value.push({
+    key: `custom_material_${materialRuleSequence}`,
+    min: 0,
+    max: 30,
+    strategy: "BASE_1_COPY_2",
+    baseGroupCount: 1,
+    copyCount: 2,
+    groupSizeCap: 30,
+    targetProjectCount: 3
+  })
+}
+
+function removeMaterialRule(key: string) {
+  materialRows.value = materialRows.value.filter((row) => row.key !== key)
+}
+
 function pushDraft() {
   const next = { ...draft.value }
   const current = props.priceRules ?? []
@@ -189,6 +216,7 @@ function pushDraft() {
 }
 
 const materialRows = ref<MaterialRuleRow[]>([])
+let materialRuleSequence = 0
 
 watch(
   () => props.materialRules,
@@ -219,19 +247,7 @@ watch(
 
 const SETTING_FIELDS: Record<string, SettingField[]> = {
   link: [
-    { key: "iaa_episode_threshold", label: "IAA 选集阈值", type: "number" },
-    { key: "iap_2_9_target", label: "IAP 2.9 目标价", type: "number" },
-    { key: "iap_2_9_min", label: "IAP 2.9 最低价", type: "number" },
-    { key: "iap_2_9_max", label: "IAP 2.9 最高价", type: "number" },
-    { key: "iap_9_9_target", label: "IAP 9.9 目标价", type: "number" },
-    { key: "iap_9_9_min", label: "IAP 9.9 最低价", type: "number" },
-    { key: "iap_9_9_max", label: "IAP 9.9 最高价", type: "number" },
-    {
-      key: "same_distance_strategy",
-      label: "同距离策略",
-      type: "select",
-      options: ["HIGHER_PRICE_FIRST", "LOWER_PRICE_FIRST"]
-    }
+    { key: "iaa_episode_threshold", label: "IAA 选集阈值", type: "number" }
   ],
   douyin: [
     {
@@ -251,19 +267,19 @@ const SETTING_FIELDS: Record<string, SettingField[]> = {
       key: "iaa_project_template",
       label: "端免项目名模板",
       type: "select",
-      optionsKey: "naming_templates"
+      options: TASK_NAMING_TEMPLATES
     },
     {
       key: "iap_project_template",
       label: "端付项目名模板",
       type: "select",
-      optionsKey: "naming_templates"
+      options: TASK_NAMING_TEMPLATES
     },
     {
       key: "test_project_template",
       label: "测试项目名模板",
       type: "select",
-      optionsKey: "naming_templates"
+      options: TASK_NAMING_TEMPLATES
     }
   ],
   runtime: [
@@ -327,28 +343,52 @@ const isRuntime = computed(() => props.category === "runtime")
 const isVersion = computed(() => props.category === "version")
 const reservedItems = computed(() => RESERVED_ITEMS[props.category] ?? [])
 
-const linkRuleRows = [
-  {
-    name: "IAA 选集阈值",
-    value: "总集数超过 50 集时选第 2 集",
-    source: "默认规则 iaa_episode_threshold"
-  },
-  {
-    name: "IAP 2.9 模板",
-    value: "目标 2.9 元 / 最低 2.6 元 / 最高 5.0 元",
-    source: "默认规则 iap_price_2_9"
-  },
-  {
-    name: "IAP 9.9 模板",
-    value: "目标 9.9 元 / 最低 8.8 元 / 最高 13.8 元",
-    source: "默认规则 iap_price_9_9"
-  },
-  {
-    name: "同距离策略",
-    value: "同距离优先高价",
-    source: "HIGHER_PRICE_FIRST"
-  }
-]
+const currentPublishedVersion = computed(() => {
+  const versions = props.versions ?? []
+  return versions.find((v) => v.status === "PUBLISHED") ?? null
+})
+
+const pendingDraftVersion = computed(() => {
+  const versions = props.versions ?? []
+  return versions.find((v) => v.status === "DRAFT" || v.status === "VALIDATING") ?? null
+})
+const tablePage = ref(1)
+const tablePageSize = ref(10)
+
+const tableRowCount = computed(() => {
+  if (isMaterial.value) return materialRows.value.length
+  if (isCid.value) return mappingDraft.value.length
+  if (isAdPreset.value) return props.adPresets?.length ?? 0
+  if (isOpenPreset.value) return props.openPresets?.length ?? 0
+  if (isVersion.value) return props.ruleSets.length
+  return 0
+})
+const pagedMaterialRows = computed(() =>
+  paginateRows(materialRows.value, tablePage.value, tablePageSize.value)
+)
+const pagedMappingRows = computed(() =>
+  paginateRows(mappingDraft.value, tablePage.value, tablePageSize.value)
+)
+const pagedAdPresets = computed(() =>
+  paginateRows(props.adPresets ?? [], tablePage.value, tablePageSize.value)
+)
+const pagedOpenPresets = computed(() =>
+  paginateRows(props.openPresets ?? [], tablePage.value, tablePageSize.value)
+)
+const pagedRuleSets = computed(() =>
+  paginateRows(props.ruleSets, tablePage.value, tablePageSize.value)
+)
+const hasPagedTable = computed(
+  () => isMaterial.value || isCid.value || isAdPreset.value || isOpenPreset.value || isVersion.value
+)
+
+watch(
+  () => [props.category, tablePageSize.value] as const,
+  () => { tablePage.value = 1 }
+)
+watch(tableRowCount, (total) => {
+  tablePage.value = validPage(total, tablePage.value, tablePageSize.value)
+})
 
 const runtimeRows = [
   { name: "剧目扫描间隔", value: "3600 秒（每小时）" },
@@ -367,23 +407,6 @@ const douyinAccounts = computed(() => {
     if (value) values.add(value)
   }
   return [...values]
-})
-
-const namingTemplates = computed(() => {
-  const seen = new Set<string>()
-  const rows: { type: string; template: string }[] = []
-  for (const preset of props.adPresets ?? []) {
-    for (const key of ["project_name", "ad_name"] as const) {
-      const template = String(preset[key] ?? "").trim()
-      if (!template || seen.has(template)) continue
-      seen.add(template)
-      rows.push({
-        type: key === "project_name" ? "项目名模板" : "广告名模板",
-        template
-      })
-    }
-  }
-  return rows
 })
 
 const accountStats = computed(() => {
@@ -430,6 +453,14 @@ function fieldOptions(field: SettingField): string[] {
     return (props.settingsOptions?.[field.optionsKey] ?? []).map(String)
   }
   return []
+}
+
+function mappingOptions(row: MappingRow, key: "ad_preset" | "open_preset" | "douyin_account") {
+  const candidateKey = `${key}_candidates`
+  const rowOptions = Array.isArray(row[candidateKey]) ? row[candidateKey] : []
+  const globalKey = key === "douyin_account" ? "douyin_accounts" : candidateKey
+  const globalOptions = props.settingsOptions?.[globalKey] ?? []
+  return [...new Set([...rowOptions, ...globalOptions].map(String).filter(Boolean))]
 }
 
 function saveSettingsForm() {
@@ -555,6 +586,12 @@ function publish() {
     </template>
 
     <template v-else-if="isMaterial">
+      <div class="rule-editor__sync-line">
+        <span>素材分组区间</span>
+        <ElButton data-test="add-material-rule" size="small" @click="addMaterialRule">
+          新增区间
+        </ElButton>
+      </div>
       <div class="rule-editor__scroll">
         <table class="rule-editor__table">
           <thead>
@@ -566,10 +603,11 @@ function publish() {
               <th>复制次数</th>
               <th>单组上限</th>
               <th>目标项目数</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in materialRows" :key="row.key">
+            <tr v-for="row in pagedMaterialRows" :key="row.key">
               <td>
                 <ElInputNumber
                   v-model="row.min"
@@ -623,6 +661,11 @@ function publish() {
                   controls-position="right"
                 />
               </td>
+              <td>
+                <ElButton size="small" text type="danger" @click="removeMaterialRule(row.key)">
+                  删除
+                </ElButton>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -656,19 +699,28 @@ function publish() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in mappingDraft" :key="row.cid">
+            <tr v-for="row in pagedMappingRows" :key="row.cid">
               <td>{{ row.cid }}</td>
               <td>{{ row.group }}</td>
               <td>{{ row.company }}</td>
               <td>{{ row.account_count }}</td>
               <td>
-                <ElInput v-model="row.ad_preset" />
+                <ElSelect v-model="row.ad_preset" filterable allow-create default-first-option>
+                  <ElOption v-for="option in mappingOptions(row, 'ad_preset')" :key="option" :label="option" :value="option" />
+                </ElSelect>
+                <p class="rule-editor__candidate-hint">可选：{{ mappingOptions(row, "ad_preset").join("、") || "无，可直接输入" }}</p>
               </td>
               <td>
-                <ElInput v-model="row.open_preset" />
+                <ElSelect v-model="row.open_preset" filterable allow-create default-first-option>
+                  <ElOption v-for="option in mappingOptions(row, 'open_preset')" :key="option" :label="option" :value="option" />
+                </ElSelect>
+                <p class="rule-editor__candidate-hint">可选：{{ mappingOptions(row, "open_preset").join("、") || "无，可直接输入" }}</p>
               </td>
               <td>
-                <ElInput v-model="row.douyin_account" />
+                <ElSelect v-model="row.douyin_account" filterable allow-create default-first-option>
+                  <ElOption v-for="option in mappingOptions(row, 'douyin_account')" :key="option" :label="option" :value="option" />
+                </ElSelect>
+                <p class="rule-editor__candidate-hint">可选：{{ mappingOptions(row, "douyin_account").join("、") || "无，可直接输入" }}</p>
               </td>
             </tr>
           </tbody>
@@ -698,7 +750,7 @@ function publish() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in adPresets ?? []" :key="String(row.id)">
+            <tr v-for="row in pagedAdPresets" :key="String(row.id)">
               <td>{{ row.preview_name }}</td>
               <td>{{ row.delivery_way }}</td>
               <td>{{ row.promotion_type }}</td>
@@ -733,7 +785,7 @@ function publish() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in openPresets ?? []" :key="String(row.id)">
+            <tr v-for="row in pagedOpenPresets" :key="String(row.id)">
               <td>{{ row.preset_name }}</td>
               <td>{{ row.company }}</td>
               <td>{{ row.monetization_type }}</td>
@@ -801,32 +853,32 @@ function publish() {
     </template>
 
     <template v-else-if="isVersion">
-      <div class="rule-editor__sync-line">
-        <span>规则集 {{ ruleSets.length }} 个</span>
-      </div>
-      <div class="rule-editor__scroll">
-        <table class="rule-editor__table">
-          <thead>
-            <tr>
-              <th>规则名称</th>
-              <th>Key</th>
-              <th>分类</th>
-              <th>状态</th>
-              <th>更新时间</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in ruleSets" :key="row.id">
-              <td>{{ row.name }}</td>
-              <td>{{ row.key }}</td>
-              <td>{{ row.category }}</td>
-              <td>{{ row.status }}</td>
-              <td>{{ row.updated_at }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="rule-editor__version-info">
+        <p class="rule-editor__version-info-text">
+          共 {{ ruleSets.length }} 个规则集。请在下方选择规则集查看版本历史、校验和发布。
+        </p>
+        <div class="rule-editor__version-summary">
+          <div v-for="rs in ruleSets" :key="rs.id" class="rule-editor__version-summary-item">
+            <span class="rule-editor__version-summary-name">{{ rs.name }}</span>
+            <span class="rule-editor__version-summary-cat">{{ rs.category }}</span>
+            <span class="rule-editor__version-summary-status" :class="rs.status === 'ACTIVE' ? 'is-active' : ''">
+              {{ rs.status }}
+            </span>
+          </div>
+        </div>
       </div>
     </template>
+
+    <div v-if="hasPagedTable" class="rule-editor__pagination">
+      <span>共 {{ tableRowCount }} 条</span>
+      <ElPagination
+        v-model:current-page="tablePage"
+        v-model:page-size="tablePageSize"
+        :total="tableRowCount"
+        :page-sizes="[10, 20, 50]"
+        layout="sizes, prev, pager, next"
+      />
+    </div>
 
     <template v-else>
       <ul class="rule-editor__reserved">
@@ -842,21 +894,34 @@ function publish() {
       v-if="isPrice || isMaterial"
       class="rule-editor__actions"
     >
-      <ElButton
-        :loading="busy"
-        :disabled="!ruleSetId"
-        @click="saveDraft"
-      >
-        保存草稿
-      </ElButton>
-      <ElButton
-        type="primary"
-        :disabled="!ruleSetId"
-        :loading="busy"
-        @click="publish"
-      >
-        发布版本
-      </ElButton>
+      <div class="rule-editor__version-status">
+        <span v-if="currentPublishedVersion" class="rule-editor__version-badge rule-editor__version-badge--published">
+          当前生效: v{{ currentPublishedVersion.version }}
+        </span>
+        <span v-if="pendingDraftVersion" class="rule-editor__version-badge rule-editor__version-badge--draft">
+          有草稿: v{{ pendingDraftVersion.version }} 未发布
+        </span>
+        <span v-if="!currentPublishedVersion && !pendingDraftVersion" class="rule-editor__version-badge rule-editor__version-badge--none">
+          暂无版本
+        </span>
+      </div>
+      <div class="rule-editor__action-buttons">
+        <ElButton
+          :loading="busy"
+          :disabled="!ruleSetId"
+          @click="saveDraft"
+        >
+          保存草稿
+        </ElButton>
+        <ElButton
+          type="primary"
+          :disabled="!ruleSetId"
+          :loading="busy"
+          @click="publish"
+        >
+          发布版本
+        </ElButton>
+      </div>
     </footer>
     <p v-if="isMaterial && !ruleSetId" class="rule-editor__note">
       素材规则暂无对应规则集，当前仅展示生效规则，暂不可保存或发布。
@@ -941,7 +1006,9 @@ function publish() {
 }
 
 .rule-editor__scroll {
+  max-height: 520px;
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .rule-editor__table {
@@ -991,6 +1058,24 @@ function publish() {
 
 .rule-editor__table :deep(.el-input) {
   width: 220px;
+}
+
+.rule-editor__candidate-hint {
+  max-width: 220px;
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.rule-editor__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
 }
 
 .rule-editor__reserved {
@@ -1103,10 +1188,95 @@ function publish() {
 
 .rule-editor__actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding-top: 4px;
   border-top: 1px solid #f0f1f3;
+}
+
+.rule-editor__version-status {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rule-editor__action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.rule-editor__version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.rule-editor__version-badge--published {
+  background: var(--color-success-bg, #e8f5e9);
+  color: var(--color-success, #2e7d32);
+}
+
+.rule-editor__version-badge--draft {
+  background: var(--color-warning-bg, #fff3e0);
+  color: var(--color-warning, #e65100);
+}
+
+.rule-editor__version-badge--none {
+  color: var(--color-text-tertiary);
+}
+
+.rule-editor__version-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rule-editor__version-info-text {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.rule-editor__version-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-editor__version-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--color-bg-panel-secondary);
+  border-radius: var(--radius-card);
+}
+
+.rule-editor__version-summary-name {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  flex: 1;
+}
+
+.rule-editor__version-summary-cat {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.rule-editor__version-summary-status {
+  font-size: var(--font-size-caption);
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #f0f1f3;
+  color: var(--color-text-tertiary);
+}
+
+.rule-editor__version-summary-status.is-active {
+  background: var(--color-success-bg, #e8f5e9);
+  color: var(--color-success, #2e7d32);
 }
 
 @media (max-width: 900px) {

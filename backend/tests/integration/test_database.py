@@ -51,7 +51,7 @@ class TestEngine:
                     pass
                 assert _get_pragma(eng, "journal_mode") == "wal"
                 assert _get_pragma(eng, "foreign_keys") == "1"
-                assert _get_pragma(eng, "busy_timeout") == "5000"
+                assert _get_pragma(eng, "busy_timeout") == "30000"
             finally:
                 eng.dispose()
 

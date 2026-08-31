@@ -12,11 +12,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.domain.ledger.task_ledger import TaskLedger
+from backend.domain.execution.execution_event import ExecutionEvent
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.domain.tasks.drama_task import DramaTask, TaskStatus
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.repositories.ledger_repository import (
     SqlAlchemyLedgerRepository,
+)
+from backend.infrastructure.database.repositories.execution_repository import (
+    SqlAlchemyExecutionRepository,
 )
 from backend.infrastructure.database.repositories.queue_repository import (
     SqlAlchemyQueueRepository,
@@ -86,6 +90,7 @@ def _create_queue_item(
     available_at: datetime,
     claimed_by: str | None = None,
     attempt_count: int = 0,
+    failure_code: str | None = None,
 ) -> None:
     """插入 QueueItem。"""
     item = QueueItem(
@@ -96,6 +101,7 @@ def _create_queue_item(
         claimed_by=claimed_by,
         lease_until=available_at + timedelta(hours=1) if claimed_by else None,
         attempt_count=attempt_count,
+        failure_code=failure_code,
     )
     SqlAlchemyQueueRepository(session).add(item)
 
@@ -137,6 +143,39 @@ class TestTaskApi:
         assert [item["id"] for item in data] == [late_id, early_id]
         assert data[0]["queue_state"] == QueueState.QUEUED
         assert data[1]["queue_state"] is None
+        assert data[0]["current_stage"] == "WAITING_AVAILABLE_TIME"
+        assert data[0]["target_stage"] == "LINK_READY"
+
+    def test_manual_scan_runs_scheduler_and_returns_statistics(
+        self, client, session_factory, monkeypatch
+    ):
+        """手动扫描必须执行一次调度并返回新增/入队统计。"""
+        source = DramaTask(
+            id="source-1",
+            source_key="source-key-1",
+            drama_name="手动扫描剧",
+            platform="TOMATO",
+            available_time=datetime.now(timezone.utc),
+            status=TaskStatus.WAITING_TIME,
+        )
+
+        class FakeFeishu:
+            def fetch_tasks(self, day):
+                return [source]
+
+        monkeypatch.setattr(
+            "backend.interfaces.api.routes.tasks.build_scheduler_feishu",
+            lambda settings: (FakeFeishu(), "test"),
+        )
+
+        response = client.post("/api/tasks/scan")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["created_tasks"] == 1
+        assert payload["enqueued"] == 1
+        with session_factory() as session:
+            assert SqlAlchemyTaskRepository(session).get_by_source_key("source-key-1")
 
     def test_list_filters(self, client, session_factory):
         """date/platform/status/q 均可过滤。"""
@@ -256,6 +295,50 @@ class TestTaskApi:
         assert duplicate.status_code == 409
         assert duplicate.json()["code"] == "CONFLICT"
 
+    def test_enqueue_persists_requested_link_extraction_target(
+        self, client, session_factory
+    ):
+        """手动选择仅提链后，Worker 必须能读到该运行终点。"""
+        task_id = str(uuid.uuid4())
+        available_at = datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                available_time=available_at,
+            )
+            session.commit()
+
+        response = client.post(
+            f"/api/tasks/{task_id}/enqueue",
+            json={"target_stage": "LINK_EXTRACTION"},
+        )
+
+        assert response.status_code == 201
+        detail = client.get(f"/api/tasks/{task_id}").json()
+        assert detail["target_stage"] == "LINK_EXTRACTION"
+        assert detail["current_stage"] == "WAITING_AVAILABLE_TIME"
+        assert detail["link_set"] == {}
+        assert detail["promotion_configs"] == {}
+
+    def test_enqueue_rejects_plan_stage_target(self, client, session_factory):
+        """本期接口不得绕过边界进入计划阶段。"""
+        task_id = str(uuid.uuid4())
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                available_time=datetime(2026, 8, 16, 12, tzinfo=timezone.utc),
+            )
+            session.commit()
+
+        response = client.post(
+            f"/api/tasks/{task_id}/enqueue",
+            json={"target_stage": "SUBMIT_PLAN"},
+        )
+
+        assert response.status_code == 422
+
     def test_enqueue_reuses_terminal_item(self, client, session_factory):
         """终态队列项可复用为新的 WAITING_TIME 项。"""
         task_id = str(uuid.uuid4())
@@ -285,3 +368,160 @@ class TestTaskApi:
         assert data["state"] == QueueState.WAITING_TIME
         assert data["attempt_count"] == 0
         assert data["claimed_by"] is None
+
+    def test_enqueue_reuses_dry_run_item(self, client, session_factory):
+        """演练完成项视为终态，继续操作应复用并重新入队。"""
+        task_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        available_at = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                available_time=available_at,
+                status=TaskStatus.DRY_RUN,
+            )
+            task = SqlAlchemyTaskRepository(session).get(task_id)
+            assert task is not None
+            task.link_set = {"IAA": "mock://iaa/test"}
+            task.link_status = "VALIDATED"
+            task.delivery_drama_id = "mock-drama"
+            task.promotion_configs = {"IAA": "mock-config"}
+            task.current_stage = "LINK_READY"
+            SqlAlchemyTaskRepository(session).update(task)
+            _create_queue_item(
+                session,
+                item_id=item_id,
+                task_id=task_id,
+                state=QueueState.DRY_RUN,
+                available_at=available_at,
+            )
+            session.commit()
+
+        response = client.post(f"/api/tasks/{task_id}/enqueue")
+
+        assert response.status_code == 200
+        assert response.json()["id"] == item_id
+        assert response.json()["state"] == QueueState.WAITING_TIME
+        detail = client.get(f"/api/tasks/{task_id}").json()
+        assert detail["status"] == TaskStatus.WAITING_TIME
+        assert detail["current_stage"] == "WAITING_AVAILABLE_TIME"
+        assert detail["link_set"] == {}
+        assert detail["delivery_drama_id"] == ""
+        assert detail["promotion_configs"] == {}
+
+    def test_enqueue_retries_manual_review_item_to_selected_target(
+        self, client, session_factory
+    ):
+        """人工处理任务可从详情直接重新安排到链接就绪。"""
+        task_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        available_at = datetime(2026, 8, 16, 12, 0, 0, tzinfo=timezone.utc)
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                available_time=available_at,
+                status=TaskStatus.MANUAL_REVIEW,
+            )
+            _create_queue_item(
+                session,
+                item_id=item_id,
+                task_id=task_id,
+                state=QueueState.MANUAL_REVIEW,
+                available_at=available_at,
+                attempt_count=3,
+                failure_code="ValueError",
+            )
+            session.commit()
+
+        response = client.post(
+            f"/api/tasks/{task_id}/enqueue",
+            json={"target_stage": "LINK_READY"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == item_id
+        assert response.json()["state"] == QueueState.QUEUED
+        assert response.json()["failure_code"] is None
+        assert client.get(f"/api/tasks/{task_id}").json()["target_stage"] == "LINK_READY"
+
+    def test_confirm_drama_match_saves_candidate_and_requeues(
+        self, client, session_factory
+    ):
+        """人工确认候选后继续执行不再依赖原始严格时间匹配。"""
+        task_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        available_at = datetime(2026, 8, 19, 0, 55, tzinfo=timezone.utc)
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                drama_name="剧A",
+                available_time=available_at,
+                status=TaskStatus.MANUAL_REVIEW,
+            )
+            task = SqlAlchemyTaskRepository(session).get(task_id)
+            assert task is not None
+            task.link_status = "DRAMA_MISMATCH"
+            SqlAlchemyTaskRepository(session).update(task)
+            _create_queue_item(
+                session,
+                item_id=item_id,
+                task_id=task_id,
+                state=QueueState.MANUAL_REVIEW,
+                available_at=available_at,
+                failure_code="DRAMA_MISMATCH",
+            )
+            SqlAlchemyExecutionRepository(session).add_event(
+                ExecutionEvent(
+                    task_id=task_id,
+                    event_type="MANUAL_REVIEW",
+                    level="ERROR",
+                    message="链接提取未完成: DRAMA_MISMATCH",
+                    context_json={
+                        "candidates": [
+                            {
+                                "drama_name": "剧A",
+                                "minute": "2026-08-19T00:53:00+08:00",
+                                "locator_key": "/detail/a",
+                            }
+                        ]
+                    },
+                )
+            )
+            session.commit()
+
+        response = client.post(
+            f"/api/tasks/{task_id}/confirm-drama-match",
+            json={"locator_key": "/detail/a"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["state"] == QueueState.QUEUED
+        detail = client.get(f"/api/tasks/{task_id}").json()
+        assert detail["confirmed_drama_match"]["locator_key"] == "/detail/a"
+
+    def test_enqueue_rejects_unconfirmed_drama_mismatch(
+        self, client, session_factory
+    ):
+        """普通继续不能绕过剧目候选人工确认。"""
+        task_id = str(uuid.uuid4())
+        with session_factory() as session:
+            _create_task(
+                session,
+                task_id=task_id,
+                drama_name="剧A",
+                available_time=datetime(2026, 8, 19, 0, 55, tzinfo=timezone.utc),
+                status=TaskStatus.MANUAL_REVIEW,
+            )
+            task = SqlAlchemyTaskRepository(session).get(task_id)
+            assert task is not None
+            task.link_status = "DRAMA_MISMATCH"
+            SqlAlchemyTaskRepository(session).update(task)
+            session.commit()
+
+        response = client.post(f"/api/tasks/{task_id}/enqueue")
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "CONFLICT"

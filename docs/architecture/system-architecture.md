@@ -15,7 +15,7 @@ application/services + workflows + commands + queries + ports
         ↓
 domain/tasks + queue + workflow + rules + plans + assets + errors
         ↓
-platforms/feishu + tomato + delivery_system + ocean_engine
+platforms/feishu + tomato + delivery_system
         ↓
 infrastructure/database + browser + queue + logging + artifacts + config
 ```
@@ -59,12 +59,13 @@ Application 不包含平台操作细节，也不直接访问数据库或浏览�
 
 平台层为每个外部系统提供 Adapter 与 Page Object：
 
-- `FeishuAdapter`：剧目表/账户表读写、N 状态读取、链接回填、M 写入；
+- `FeishuAdapter`：私有剧目表/账户表读写、N 状态读取、链接回填、M 写入；
+- `DramaSheetAdapter`：只读公用剧目表，预览确认后将映射后的新增行原顺序插入私有剧目表顶部，并回读校验；
 - `TomatoAdapter`：番茄搜索、登录态、免费/付费入口、链接提取；
 - `DeliverySystemAdapter`：剧目资源、推广内容配置、计划提交、任务状态轮询；
-- `OceanEngineAdapter`：巨量产品库建产品（V1 先 Mock，后接真实平台）。
+- 商品库：由投放系统自动配置，V1 不建立 Adapter、不创建、不修改、不校验。
 
-每个平台先 Mock，再只读验证，再“填写但不提交”，最后单条/批次提交；每个平台独立持久化浏览器 Session。
+每个平台先 Mock，再只读验证，再“填写但不提交”，最后单条/批次提交；投放执行固定复用一个持久化登录上下文和一个标签页。
 
 ### 3.4 Infrastructure
 
@@ -100,7 +101,7 @@ Control Server 通过 Application 的 `commands` 与 `queries` 访问系统，�
 Automation Worker 是独立启动的后台执行体，V1 固定单 Worker：
 
 - 从队列领取任务，建立租约并持续心跳；
-- 按平台分流执行端到端流程：番茄链接提取与回填、投放系统资源与推广配置、巨量产品库建产品、PlanSpec 生成与提交保护、状态轮询与 M 写入；
+- 按平台分流执行端到端流程：番茄链接提取与回填、投放系统资源与推广配置、PlanSpec 生成与提交保护、状态轮询与 M 写入；
 - 平台写操作串行执行；
 - 创建类操作超时先对账，禁止直接重复提交；
 - 失败、部分失败、超时进入 `MANUAL_REVIEW` 并记录异常与截图；
@@ -133,7 +134,8 @@ Adapter 接口在 Application `ports` 中声明，由 Platforms 实现。接口�
 
 ### 7.1 FeishuAdapter
 
-- `list_drama_rows()`：读取剧目表当天数据与 N 列状态；
+- `list_drama_rows()`：只读取私有剧目表当天数据与 N 列状态；
+- `DramaSheetAdapter.read_public_rows()`：仅供导入预览读取公用表；公用表不是 Worker 的执行数据源。
 - `read_account_sheets(kind)`：读取 iaa/iap/测试户账户表最新数据；
 - `write_links(task, links)`：回填 J/K/L 链接；
 - `write_completed(task)`：真实提交且状态完成后写 M=1；
@@ -153,12 +155,7 @@ Adapter 接口在 Application `ports` 中声明，由 Platforms 实现。接口�
 - `submit_plan(planspec)`：提交标准投放计划（受 `ALLOW_FINAL_SUBMIT` 保护）；
 - `poll_status(task)`：轮询任务状态。
 
-### 7.4 OceanEngineAdapter
-
-- `create_product(drama, album_id)`：在巨量产品库建产品；
-- `get_product_id(drama, album_id)`：查询已有产品，用于幂等对账。
-
-V1 中 OceanEngineAdapter 只负责产品库，不负责标准计划状态判断；任务完成状态以投放系统巨量引擎 V2 任务页为最终来源。
+商品库由投放系统预设自动配置，Worker 不访问商品库页面。任务完成状态以投放系统巨量引擎 V2 任务页为最终来源。
 
 ## 8. 禁止依赖规则
 
@@ -172,7 +169,7 @@ V1 中 OceanEngineAdapter 只负责产品库，不负责标准计划状态判断
 ## 9. 数据与状态流
 
 ```text
-飞书剧目表 ─扫描→ Control Server 入队 → Automation Worker
+公用剧目表 ─预览确认导入→ 私有剧目表 ─扫描→ Control Server 入队 → Automation Worker
     → Tomato/DeliverySystem/OceanEngine Adapter
     → Domain 规则校验 → Repository 持久化
     → 轮询完成 → 回写飞书 M=1 → 台账保留

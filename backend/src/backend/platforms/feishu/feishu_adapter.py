@@ -5,14 +5,18 @@ import csv
 import io
 import json
 import logging
+import shutil
 import subprocess
+import sys
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any, Callable
 
 from backend.domain.common.timezones import SHANGHAI_TZ, as_utc
 from backend.domain.errors.domain_error import ExternalAdapterError, ValidationError
 from backend.domain.ports.adapters import FeishuAdapter as FeishuAdapterProtocol
 from backend.domain.tasks.drama_task import DramaTask
+from backend.domain.rules.account_block import AccountRow
 from backend.platforms.feishu.sheet_parser import parse_annotated_rows, parse_task_rows
 
 
@@ -21,6 +25,8 @@ logger = logging.getLogger(__name__)
 _FETCH_RANGE = "A1:N200"
 _LINK_COLUMNS = {"IAA": "J", "9.9": "K", "2.9": "L"}
 _LINK_ORDER = ("IAA", "9.9", "2.9")
+_ACCOUNT_SHEETS = {"IAA": "iaa账户", "IAP": "iap账户", "TEST": "测试户账户"}
+_ACCOUNT_RANGE = "A1:F500"
 
 
 class FeishuAdapter(FeishuAdapterProtocol):
@@ -86,12 +92,128 @@ class FeishuAdapter(FeishuAdapterProtocol):
                 return cells[0].strip()
         return ""
 
+    def read_account_rows(self, kind: str) -> list[AccountRow]:
+        """读取账户表 A-F，转换为平台无关账户行。"""
+        sheet_name = self._account_sheet_name(kind)
+        result = self._run(
+            self._read_command(
+                "+csv-get",
+                "--range",
+                _ACCOUNT_RANGE,
+                sheet_name=sheet_name,
+            )
+        )
+        rows: list[AccountRow] = []
+        for row_number, cells in parse_annotated_rows(_annotated_csv(result)):
+            if row_number == 1 or len(cells) < 4:
+                continue
+            padded = [*cells, "", ""][:6]
+            group, drama_name, name, cid, is_test, enabled = (
+                value.strip() for value in padded
+            )
+            if not group or not cid:
+                continue
+            rows.append(
+                AccountRow(
+                    row_number=row_number,
+                    name=name,
+                    cid=cid,
+                    group=group,
+                    enabled=enabled.lower() in {"启用", "是", "true", "1", "enabled"},
+                    is_test=is_test.lower() in {"是", "true", "1", "yes"},
+                    drama_name=drama_name,
+                )
+            )
+        return rows
+
+    def write_account_names(self, kind: str, assignments: dict[int, str]) -> None:
+        """按连续行批量写账户表 B 列剧名；空计划不执行。"""
+        if not assignments:
+            return
+        sheet_name = self._account_sheet_name(kind)
+        for rows in _contiguous_assignment_groups(assignments):
+            start = rows[0]
+            csv_text = _to_csv_column([assignments[row] for row in rows])
+            self._run_write(
+                self._write_command(
+                    "+csv-put",
+                    f"B{start}",
+                    csv_text,
+                    sheet_name=sheet_name,
+                )
+            )
+
+    def write_account_test_flags(self, kind: str, row_numbers: set[int]) -> None:
+        """把选中的测试户行 E 列标记为“是”。"""
+        if not row_numbers:
+            return
+        sheet_name = self._account_sheet_name(kind)
+        assignments = {row: "是" for row in row_numbers}
+        for rows in _contiguous_assignment_groups(assignments):
+            self._run_write(
+                self._write_command(
+                    "+csv-put",
+                    f"E{rows[0]}",
+                    _to_csv_column(["是"] * len(rows)),
+                    sheet_name=sheet_name,
+                )
+            )
+
+    def append_account_block(
+        self,
+        kind: str,
+        expected_last_row: int,
+        template_rows: list[AccountRow],
+    ) -> list[AccountRow]:
+        """在预期表尾复制标准块；剧名、测试标记和备注保持为空。"""
+        if not template_rows:
+            return []
+        if expected_last_row < 1:
+            raise ValidationError("账户表最后行号必须为正整数")
+        sheet_name = self._account_sheet_name(kind)
+        values = [
+            [
+                row.group,
+                "",
+                row.name,
+                row.cid,
+                "",
+                "启用" if row.enabled else "停用",
+            ]
+            for row in template_rows
+        ]
+        self._run_write(
+            self._write_command(
+                "+csv-put",
+                f"A{expected_last_row + 1}",
+                _to_csv_rows(values),
+                sheet_name=sheet_name,
+            )
+        )
+        return [
+            AccountRow(
+                row_number=expected_last_row + offset,
+                name=row.name,
+                cid=row.cid,
+                group=row.group,
+                enabled=row.enabled,
+                is_test=False,
+                drama_name="",
+            )
+            for offset, row in enumerate(template_rows, start=1)
+        ]
+
     @property
     def recorded_commands(self) -> list[list[str]]:
         """dry_run 模式下记录但未执行的命令（仅供测试/日志观察）。"""
         return [list(command) for command in self._recorded_commands]
 
-    def _read_command(self, shortcut: str, *extra: str) -> list[str]:
+    def _read_command(
+        self,
+        shortcut: str,
+        *extra: str,
+        sheet_name: str | None = None,
+    ) -> list[str]:
         return [
             "lark-cli",
             "sheets",
@@ -99,7 +221,7 @@ class FeishuAdapter(FeishuAdapterProtocol):
             "--url",
             self._task_sheet_url,
             "--sheet-name",
-            self._task_sheet_name,
+            sheet_name or self._task_sheet_name,
             *extra,
             "--as",
             "user",
@@ -107,7 +229,14 @@ class FeishuAdapter(FeishuAdapterProtocol):
             "json",
         ]
 
-    def _write_command(self, shortcut: str, start_cell: str, csv_text: str) -> list[str]:
+    def _write_command(
+        self,
+        shortcut: str,
+        start_cell: str,
+        csv_text: str,
+        *,
+        sheet_name: str | None = None,
+    ) -> list[str]:
         return [
             "lark-cli",
             "sheets",
@@ -115,7 +244,7 @@ class FeishuAdapter(FeishuAdapterProtocol):
             "--url",
             self._task_sheet_url,
             "--sheet-name",
-            self._task_sheet_name,
+            sheet_name or self._task_sheet_name,
             "--start-cell",
             start_cell,
             "--csv",
@@ -126,6 +255,13 @@ class FeishuAdapter(FeishuAdapterProtocol):
             "json",
         ]
 
+    @staticmethod
+    def _account_sheet_name(kind: str) -> str:
+        try:
+            return _ACCOUNT_SHEETS[kind.upper()]
+        except KeyError as exc:
+            raise ValidationError(f"不支持的账户表类型: {kind!r}") from exc
+
     def _run_write(self, command: list[str]) -> None:
         if self._dry_run:
             self._recorded_commands.append(command)
@@ -134,8 +270,15 @@ class FeishuAdapter(FeishuAdapterProtocol):
         self._run(command)
 
     def _run(self, command: list[str]) -> Any:
+        command = self._resolve_command(command)
         try:
-            completed = self._runner(command)
+            completed = self._runner(
+                command,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+            )
         except Exception as exc:
             raise ExternalAdapterError(f"lark-cli 执行失败: {exc}") from exc
         if getattr(completed, "returncode", 0) != 0:
@@ -144,6 +287,21 @@ class FeishuAdapter(FeishuAdapterProtocol):
                 f" stderr={getattr(completed, 'stderr', '')}"
             )
         return completed
+
+    def _resolve_command(self, command: list[str]) -> list[str]:
+        """Windows 下通过 Node 运行 lark-cli，避免 .cmd 无法被 subprocess 直接执行。"""
+        if (
+            sys.platform != "win32"
+            or self._runner is not subprocess.run
+            or not command
+            or command[0] != "lark-cli"
+        ):
+            return command
+        wrapper = shutil.which("lark-cli.cmd")
+        if wrapper is None:
+            return ["lark-cli.cmd", *command[1:]]
+        script = Path(wrapper).parent / "node_modules" / "@larksuite" / "cli" / "scripts" / "run.js"
+        return [shutil.which("node.exe") or "node.exe", str(script), *command[1:]]
 
     @staticmethod
     def _row_number(task_id: str) -> int:
@@ -185,3 +343,30 @@ def _to_csv_row(values: list[str]) -> str:
     buffer = io.StringIO()
     csv.writer(buffer).writerow(values)
     return buffer.getvalue().rstrip("\r\n")
+
+
+def _to_csv_column(values: list[str]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    for value in values:
+        writer.writerow([value])
+    return buffer.getvalue().rstrip("\n")
+
+
+def _to_csv_rows(rows: list[list[str]]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerows(rows)
+    return buffer.getvalue().rstrip("\n")
+
+
+def _contiguous_assignment_groups(assignments: dict[int, str]) -> list[list[int]]:
+    groups: list[list[int]] = []
+    for row in sorted(assignments):
+        if row < 1:
+            raise ValidationError(f"账户表行号必须为正整数: {row!r}")
+        if not groups or row != groups[-1][-1] + 1:
+            groups.append([row])
+        else:
+            groups[-1].append(row)
+    return groups

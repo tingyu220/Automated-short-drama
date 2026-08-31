@@ -18,6 +18,8 @@ from backend.platforms.mock.mock_feishu import MockFeishuAdapter
 from backend.platforms.mock.mock_ocean_engine import MockOceanEngineAdapter
 from backend.platforms.mock.mock_tomato import MockTomatoAdapter
 
+TARGET_TIME = datetime(2026, 8, 10, 6, 30, tzinfo=timezone.utc)
+
 
 class TestMockFeishuAdapter:
     """飞书 Mock 行为验证."""
@@ -70,7 +72,7 @@ class TestMockTomatoAdapter:
 
     def test_extract_iaa_link(self):
         adapter = MockTomatoAdapter()
-        link = adapter.extract_iaa_link("剧A", 40, 1)
+        link = adapter.extract_iaa_link("剧A", TARGET_TIME, 40, 1)
         assert isinstance(link, PromotionLink)
         assert link.promotion_url == "mock://iaa/剧A?ep=1"
         assert link.link_type == "IAA"
@@ -78,13 +80,13 @@ class TestMockTomatoAdapter:
 
     def test_extract_iaa_link_deterministic(self):
         adapter = MockTomatoAdapter()
-        first = adapter.extract_iaa_link("剧A", 40, 1)
-        second = adapter.extract_iaa_link("剧A", 40, 1)
+        first = adapter.extract_iaa_link("剧A", TARGET_TIME, 40, 1)
+        second = adapter.extract_iaa_link("剧A", TARGET_TIME, 40, 1)
         assert first.promotion_url == second.promotion_url
 
     def test_scan_iap_templates_ranges(self):
         adapter = MockTomatoAdapter()
-        templates = adapter.scan_iap_templates("剧A")
+        templates = adapter.scan_iap_templates("剧A", TARGET_TIME)
         assert len(templates) == 3
         assert all(isinstance(template, TemplateInfo) for template in templates)
         prices = [template.price for template in templates]
@@ -94,8 +96,8 @@ class TestMockTomatoAdapter:
 
     def test_scan_iap_templates_deterministic(self):
         adapter = MockTomatoAdapter()
-        first = adapter.scan_iap_templates("剧A")
-        second = adapter.scan_iap_templates("剧A")
+        first = adapter.scan_iap_templates("剧A", TARGET_TIME)
+        second = adapter.scan_iap_templates("剧A", TARGET_TIME)
         assert [t.template_id for t in first] == [t.template_id for t in second]
 
     def test_generate_iap_link(self):
@@ -107,7 +109,7 @@ class TestMockTomatoAdapter:
             price=2.9,
             page_order=1,
         )
-        link = adapter.generate_iap_link("剧A", template)
+        link = adapter.generate_iap_link("剧A", TARGET_TIME, template)
         assert link.promotion_url == "mock://iap/IAP/剧A?tpl=tpl-剧A-2-9"
         assert link.link_type == "IAP"
 
@@ -135,7 +137,7 @@ class TestMockDeliverySystemAdapter:
             adapter.ensure_promotion_config(
                 "dd-1", "IAA", "mock://iaa/剧A?ep=1", "剧A", "TOMATO"
             )
-            == "IAA-TOMATO-剧A"
+            == "iaa-番茄-剧A"
         )
 
     def test_submit_plan_deterministic(self):

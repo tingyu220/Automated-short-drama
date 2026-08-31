@@ -75,13 +75,23 @@ def _start_scheduler(disable: bool) -> None:
 def _build_scheduler_feishu():
     """按 WORKBUDDY_USE_REAL_ADAPTERS 选择扫描用飞书 Adapter。"""
     raw = os.getenv("WORKBUDDY_USE_REAL_ADAPTERS", "").strip().lower()
-    if raw in {"true", "1", "yes", "on"}:
-        url = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_URL", "").strip()
+    settings = Settings()
+    use_real_sheet = (
+        raw in {"true", "1", "yes", "on"}
+        or settings.use_real_adapters
+        or bool(settings.feishu_private_sheet_url.strip())
+    )
+    if use_real_sheet:
+        url = (
+            settings.feishu_private_sheet_url.strip()
+            or settings.feishu_task_sheet_url.strip()
+            or os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_URL", "").strip()
+        )
         if not url:
             raise ConfigurationError(
                 "真实扫描需要 WORKBUDDY_FEISHU_TASK_SHEET_URL"
             )
-        name = os.getenv("WORKBUDDY_FEISHU_TASK_SHEET_NAME", "剧目表")
+        name = settings.feishu_private_sheet_name
         return RealFeishuAdapter(url, name, dry_run=False), "real"
     return MockFeishuAdapter(), "mock"
 

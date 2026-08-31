@@ -318,6 +318,8 @@ def _build_step(index: int, plan_type: str, effective_from: str) -> ProductionSt
         accounts=accounts,
         cid_configs=_cid_configs(accounts, effective_from),
         material_count=3,
+        material_ids=[f"pv-material-{index}-{item}" for item in range(3)],
+        title_packages=[f"pv-title-{index}-{item}" for item in range(6)],
         material_ranges=[
             MaterialRuleRange(
                 min_material_count=0,

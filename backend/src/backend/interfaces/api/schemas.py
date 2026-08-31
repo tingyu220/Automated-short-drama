@@ -1,7 +1,8 @@
 """API 响应模型（Pydantic v2）。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -14,10 +15,13 @@ class TaskSummary(BaseModel):
     id: str
     drama_name: str
     platform: str
+    end_type: str = "NATIVE"
     available_time: datetime
     status: str
     owner: str | None
     queue_state: str | None
+    current_stage: str
+    target_stage: str
     updated_at: datetime
 
 
@@ -28,7 +32,72 @@ class TaskDetail(TaskSummary):
     attempt_count: int | None
     claimed_by: str | None
     lease_until: datetime | None
+    failure_code: str | None
+    retry_safe: bool | None
     ledger_id: str | None
+    link_set: dict[str, str]
+    delivery_drama_id: str
+    promotion_configs: dict[str, str]
+    steps: list["StepRunView"]
+    drama_match_candidates: list[dict] = []
+    confirmed_drama_match: dict | None = None
+
+
+class TaskEnqueueBody(BaseModel):
+    """任务运行终点；本期只开放提链与链接搭建。"""
+
+    target_stage: Literal["LINK_EXTRACTION", "LINK_READY"] = "LINK_READY"
+
+
+class TaskCreateBody(BaseModel):
+    """直接创建单个任务（如小程序产线手动输入剧目）。"""
+
+    drama_name: str
+    end_type: Literal["NATIVE", "MINIPROGRAM"] = "NATIVE"
+    platform: str = "TOMATO"
+    available_time: datetime | None = None
+
+
+class DramaMatchConfirmationBody(BaseModel):
+    """人工确认番茄候选的稳定定位。"""
+
+    locator_key: str
+
+
+class RuntimeEnvironmentUpdate(BaseModel):
+    """切换自动化运行环境。"""
+
+    mode: Literal["MOCK", "REAL"]
+    confirm_real: bool = False
+
+
+class OperatorMatchUpdate(BaseModel):
+    """切换剧目匹配范围。"""
+
+    match_group: bool
+
+
+class RuntimeEnvironmentView(BaseModel):
+    """运行环境与 Worker 生效状态。"""
+
+    desired_mode: Literal["MOCK", "REAL"]
+    worker_mode: Literal["MOCK", "REAL"] | None
+    switching: bool
+    operator_match_group: bool
+
+
+class StepRunView(BaseModel):
+    """任务阶段执行记录。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    step_name: str
+    status: str
+    started_at: datetime | None
+    finished_at: datetime | None
+    result_json: dict | None
+    error_code: str | None
+    error_message: str | None
 
 
 class QueueItemView(BaseModel):
@@ -45,6 +114,8 @@ class QueueItemView(BaseModel):
     lease_until: datetime | None
     attempt_count: int
     next_run_at: datetime | None
+    failure_code: str | None
+    retry_safe: bool
 
 
 class RuleSetView(BaseModel):
@@ -188,5 +259,76 @@ class ExceptionView(BaseModel):
     error_type: str | None = None
     step: str | None = None
     retry_count: int | None = None
+    failure_code: str | None = None
+    failure_details: dict | None = None
+    retry_safe: bool | None = None
     screenshots: list[str] | None = None
     stack_trace: str | None = None
+
+
+class DramaImportPreviewBody(BaseModel):
+    """读取指定北京时间业务日的公用剧目。"""
+
+    business_date: date
+    operator_name: str = "田雨"
+
+
+class DramaImportOperatorView(BaseModel):
+    name: str
+    group_prefix: str
+
+
+class DramaImportConfirmBody(BaseModel):
+    """确认一个已保存的导入预览。"""
+
+    preview_id: str
+
+
+class DramaImportRowView(BaseModel):
+    """待写入私有表的一条剧目。"""
+
+    source_row: int
+    drama_name: str
+    platform: str
+    available_time: str
+    has_validated_links: bool
+
+
+class DramaImportErrorView(BaseModel):
+    source_row: int
+    message: str
+
+
+class DramaImportPreviewView(BaseModel):
+    preview_id: str
+    business_date: date
+    source_count: int
+    new_count: int
+    duplicate_count: int
+    invalid_count: int
+    rows: list[DramaImportRowView]
+    errors: list[DramaImportErrorView]
+
+
+class DramaImportRunView(BaseModel):
+    run_id: str
+    status: str
+    business_date: date
+    source_count: int
+    new_count: int
+    duplicate_count: int
+    invalid_count: int
+    inserted_count: int
+    inserted_rows: list[int]
+    verified: bool
+    error_message: str | None
+
+
+class ImportedDramaRecordView(BaseModel):
+    source_key: str
+    drama_name: str
+    platform: str
+    available_time: str
+    operator_name: str
+    task_id: str | None
+    task_status: str | None

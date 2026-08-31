@@ -7,7 +7,7 @@ import StatusDot from "@/shared/ui/StatusDot.vue"
 import { formatDateTime } from "@/shared/utils/format"
 import type { ExceptionItem } from "@/app/stores/exception"
 
-export type ExceptionAction = "modify_config"
+export type ExceptionAction = "view_task" | "modify_config"
 
 const props = defineProps<{
   items: ExceptionItem[]
@@ -42,6 +42,13 @@ function relatedConfigText(item: ExceptionItem): string {
 
 function suggestedSteps(item: ExceptionItem): string[] {
   return item.suggested_steps ?? []
+}
+
+function failureDetailsText(item: ExceptionItem): string {
+  if (!item.failure_details) return "暂无结构化证据"
+  return Object.entries(item.failure_details)
+    .map(([key, value]) => `${key}：${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+    .join("；")
 }
 </script>
 
@@ -108,6 +115,14 @@ function suggestedSteps(item: ExceptionItem): string[] {
                   <button
                     type="button"
                     class="exception-panel__action exception-panel__action--primary"
+                    @click="run(item, 'view_task')"
+                  >
+                    查看任务
+                  </button>
+                  <button
+                    v-if="item.category === 'config_missing'"
+                    type="button"
+                    class="exception-panel__action"
                     @click="run(item, 'modify_config')"
                   >
                     修改配置
@@ -132,6 +147,14 @@ function suggestedSteps(item: ExceptionItem): string[] {
 
           <dl class="exception-panel__detail-grid">
             <div class="exception-panel__field">
+              <dt>失败步骤</dt>
+              <dd>{{ selected.step || "未记录具体步骤" }}</dd>
+            </div>
+            <div class="exception-panel__field">
+              <dt>失败码</dt>
+              <dd class="exception-panel__mono">{{ selected.failure_code || "未记录" }}</dd>
+            </div>
+            <div class="exception-panel__field">
               <dt>错误原因</dt>
               <dd>{{ selected.message }}</dd>
             </div>
@@ -153,6 +176,10 @@ function suggestedSteps(item: ExceptionItem): string[] {
               <dd class="exception-panel__mono">
                 {{ selected.page_url || "—" }}
               </dd>
+            </div>
+            <div class="exception-panel__field exception-panel__field--full">
+              <dt>失败证据</dt>
+              <dd>{{ failureDetailsText(selected) }}</dd>
             </div>
             <div class="exception-panel__field exception-panel__field--full">
               <dt>相关配置</dt>

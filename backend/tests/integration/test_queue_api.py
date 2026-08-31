@@ -72,6 +72,8 @@ def _create_queue_item(
     available_at: datetime,
     claimed_by: str | None = None,
     attempt_count: int = 0,
+    failure_code: str | None = None,
+    retry_safe: bool = False,
 ) -> None:
     """插入指定状态的 QueueItem。"""
     item = QueueItem(
@@ -82,6 +84,8 @@ def _create_queue_item(
         claimed_by=claimed_by,
         lease_until=available_at + timedelta(hours=1) if claimed_by else None,
         attempt_count=attempt_count,
+        failure_code=failure_code,
+        retry_safe=retry_safe,
     )
     SqlAlchemyQueueRepository(session).add(item)
 
@@ -122,11 +126,33 @@ class TestQueueApi:
         assert [item["id"] for item in queued_data] == [queued_id]
         assert queued_data[0]["task_id"] == task_id
 
+    def test_list_exposes_reconciliation_retry_safety(self, client, session_factory):
+        task_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        with session_factory() as session:
+            _create_task(session, task_id)
+            _create_queue_item(
+                session,
+                item_id=item_id,
+                task_id=task_id,
+                state=QueueState.MANUAL_REVIEW,
+                available_at=datetime(2026, 8, 6, 12, 0, 0),
+                failure_code="RESULT_UNCERTAIN",
+                retry_safe=False,
+            )
+            session.commit()
+
+        item = client.get("/api/queue").json()[0]
+
+        assert item["failure_code"] == "RESULT_UNCERTAIN"
+        assert item["retry_safe"] is False
+
     def test_list_excludes_terminal_by_default(self, client, session_factory):
-        """默认不返回 COMPLETED/CANCELLED，include_terminal=true 时返回。"""
+        """默认不返回 COMPLETED/CANCELLED/DRY_RUN，include_terminal=true 时返回。"""
         task_id = str(uuid.uuid4())
         completed_id = str(uuid.uuid4())
         cancelled_id = str(uuid.uuid4())
+        dry_run_id = str(uuid.uuid4())
         active_id = str(uuid.uuid4())
         available_at = datetime(2026, 8, 6, 12, 0, 0)
         with session_factory() as session:
@@ -134,6 +160,7 @@ class TestQueueApi:
             for item_id, state in [
                 (completed_id, QueueState.COMPLETED),
                 (cancelled_id, QueueState.CANCELLED),
+                (dry_run_id, QueueState.DRY_RUN),
                 (active_id, QueueState.QUEUED),
             ]:
                 _create_queue_item(
@@ -154,6 +181,7 @@ class TestQueueApi:
         assert {item["id"] for item in all_data} == {
             completed_id,
             cancelled_id,
+            dry_run_id,
             active_id,
         }
 

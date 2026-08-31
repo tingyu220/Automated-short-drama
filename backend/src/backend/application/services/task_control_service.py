@@ -51,6 +51,8 @@ def pause_task(
 ) -> QueueItem:
     """暂停队列项：QUEUED/CLAIMED/RUNNING -> PAUSED，清空领取字段。"""
     item = _get_item(queue_repo, queue_item_id)
+    if item.state in (QueueState.COMPLETED, QueueState.CANCELLED, QueueState.DRY_RUN):
+        raise ConflictError(f"QueueItem {queue_item_id} 已处于终态 {item.state}")
     if item.state in (QueueState.CLAIMED, QueueState.RUNNING):
         _require_worker(item, worker_id)
     item.state = QueueStateMachine.transition(item.state, QueueState.PAUSED)
@@ -83,7 +85,7 @@ def cancel_task(
 ) -> QueueItem:
     """取消队列项：活动状态 -> CANCELLED，清空领取字段。"""
     item = _get_item(queue_repo, queue_item_id)
-    if item.state in (QueueState.COMPLETED, QueueState.CANCELLED):
+    if item.state in (QueueState.COMPLETED, QueueState.CANCELLED, QueueState.DRY_RUN):
         raise ConflictError(f"QueueItem {queue_item_id} 已处于终态 {item.state}")
     if item.state in (QueueState.CLAIMED, QueueState.RUNNING):
         _require_worker(item, worker_id)
@@ -108,9 +110,15 @@ def retry_task(
         raise ConflictError(
             f"QueueItem {queue_item_id} 状态为 {item.state}，不允许重试"
         )
+    if item.failure_code == "RESULT_UNCERTAIN" and not item.retry_safe:
+        raise ConflictError(
+            f"QueueItem {queue_item_id} 提交结果不确定，完成外部对账前禁止重试"
+        )
     item.state = QueueStateMachine.transition(item.state, QueueState.QUEUED)
     item.attempt_count = 0
     _clear_claim(item)
+    item.failure_code = None
+    item.retry_safe = False
     _sync_task_status(task_repo, item.task_id, TaskStatus.READY)
     return queue_repo.update(item)
 

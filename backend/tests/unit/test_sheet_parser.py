@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from backend.platforms.feishu.sheet_parser import parse_task_rows
+from backend.platforms.feishu.sheet_parser import parse_annotated_rows, parse_task_rows
+from backend.domain.tasks.drama_task import TaskStatus
 
 
 SAMPLE_CSV = (
@@ -60,7 +61,20 @@ class TestParseTaskRows:
         assert task.id == "2"
         assert task.drama_name == "剧A"
         assert task.platform == "TOMATO"
-        assert task.status == "有人未上"
+        assert task.status == TaskStatus.WAITING_TIME
+
+    def test_existing_ok_links_are_loaded_as_validated_snapshot(self):
+        """删除 N=OK 快照逻辑后，已提取链接会被错误地再次访问番茄。"""
+        task = parse_task_rows(SAMPLE_CSV)[0]
+
+        assert task.source_key
+        assert task.link_status == "NOT_STARTED"
+
+        linked_csv = SAMPLE_CSV.replace("有人未上", "OK", 1)
+        linked = parse_task_rows(linked_csv)[0]
+
+        assert linked.link_status == "VALIDATED"
+        assert linked.link_set == {"IAA": "linkJ", "9.9": "linkK", "2.9": "linkL"}
 
     def test_parse_skips_bad_rows(self):
         annotated_csv = (
@@ -74,3 +88,8 @@ class TestParseTaskRows:
         tasks = parse_task_rows(annotated_csv)
 
         assert [task.sheet_row for task in tasks] == [8]
+
+    def test_annotated_row_marker_separator_is_not_cell_content(self):
+        rows = parse_annotated_rows("[row=2] 剧目A,番茄\n")
+
+        assert rows == [(2, ["剧目A", "番茄"])]

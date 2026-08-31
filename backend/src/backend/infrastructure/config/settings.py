@@ -42,15 +42,30 @@ class Settings(BaseSettings):
     port: int = 8765
     database_url: str = "sqlite:///data/database/app.db"
     allow_final_submit: bool = False
+    use_real_adapters: bool = False
+    poll_interval_seconds: int = 300
+    poll_timeout_seconds: int = 7200
+    tomato_base_url: str = "https://www.changdupingtai.com"
+    delivery_base_url: str = "http://web.tjhaozew.top"
+    ocean_base_url: str = "https://business.oceanengine.com"
+    youxuan_base_url: str = "http://duanju.youxuan2.cn"
     config_defaults_dir: Path = Path("configs/defaults")
     data_dir: Path = Path("data")
     log_level: str = "INFO"
     changdu_account: str = ""
     changdu_password: str = ""
+    feishu_source_sheet_url: str = ""
+    feishu_source_sheet_id: str = "sM4NAq"
+    feishu_source_sheet_name: str = "漫剧投放计划表"
+    feishu_private_sheet_url: str = ""
+    feishu_private_sheet_id: str = "a8d032"
+    feishu_private_sheet_name: str = "剧目表"
+    feishu_task_sheet_url: str = ""
+    feishu_task_sheet_name: str = "剧目表"
 
-    @field_validator("allow_final_submit", mode="before")
+    @field_validator("allow_final_submit", "use_real_adapters", mode="before")
     @classmethod
-    def _validate_allow_final_submit(cls, v: object) -> bool:
+    def _validate_strict_bool(cls, v: object) -> bool:
         """严格解析布尔值，非法值直接校验失败。"""
         if isinstance(v, bool):
             return v
@@ -65,7 +80,7 @@ class Settings(BaseSettings):
                 return True
             if v == 0:
                 return False
-        raise ValueError(f"allow_final_submit 必须是严格布尔值，收到: {v!r}")
+        raise ValueError(f"配置项必须是严格布尔值，收到: {v!r}")
 
     @field_validator("config_defaults_dir", "data_dir", mode="before")
     @classmethod
@@ -75,6 +90,21 @@ class Settings(BaseSettings):
         if not p.is_absolute():
             p = PROJECT_ROOT / p
         return p
+
+    @field_validator("poll_interval_seconds", "poll_timeout_seconds")
+    @classmethod
+    def _validate_positive_seconds(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("轮询时间配置必须为正整数")
+        return v
+
+    @field_validator("tomato_base_url", "delivery_base_url", "ocean_base_url", "youxuan_base_url")
+    @classmethod
+    def _validate_platform_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if not normalized.startswith(("http://", "https://")):
+            raise ValueError("平台地址必须是 http(s) URL")
+        return normalized
 
     @property
     def is_development(self) -> bool:

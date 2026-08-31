@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.infrastructure.database.base import Base
@@ -15,9 +15,13 @@ class DramaTaskRecord(Base):
     __tablename__ = "drama_task"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     sheet_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
     drama_name: Mapped[str] = mapped_column(String(256), nullable=False)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    end_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="NATIVE", server_default=text("'NATIVE'")
+    )
     available_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(
@@ -25,6 +29,32 @@ class DramaTaskRecord(Base):
         nullable=False,
         default="WAITING_TIME",
         server_default=text("'WAITING_TIME'"),
+    )
+    link_set_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
+    )
+    source_links_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
+    )
+    link_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="NOT_STARTED", server_default=text("'NOT_STARTED'")
+    )
+    current_stage: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="WAITING_AVAILABLE_TIME",
+        server_default=text("'WAITING_AVAILABLE_TIME'"),
+    )
+    target_stage: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="LINK_READY",
+        server_default=text("'LINK_READY'"),
+    )
+    delivery_drama_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=text("''")
+    )
+    promotion_configs_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
+    )
+    confirmed_drama_match_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
@@ -57,6 +87,10 @@ class QueueItemRecord(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    retry_safe: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )

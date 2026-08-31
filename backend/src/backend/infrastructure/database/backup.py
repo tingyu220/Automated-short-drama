@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.domain.errors.domain_error import ConfigurationError
@@ -25,7 +25,7 @@ def backup_database(db_path: Path, backup_dir: Path) -> Path:
         raise ConfigurationError(f"数据库文件不存在: {db_path}")
 
     backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     backup_path = _unique_backup_path(backup_dir, f"app-{timestamp}.db")
     source_conn = sqlite3.connect(str(db_path))
     target_conn = sqlite3.connect(str(backup_path))

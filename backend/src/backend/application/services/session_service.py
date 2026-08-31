@@ -26,6 +26,12 @@ PLATFORM_LOGIN_URLS: dict[str, str] = {
     "ocean": "https://business.oceanengine.com",
 }
 
+_LIVE_PROBE_URLS: dict[str, str] = {
+    **PLATFORM_LOGIN_URLS,
+    "tomato": "https://www.changdupingtai.com/sale/short-play/list",
+    "delivery": "http://web.tjhaozew.top/video/dramas",
+}
+
 AUTH_COOKIE_NAMES: dict[str, set[str]] = {
     "tomato": {"sessionid", "sid_guard", "username", "nickName"},
     "delivery": {"Admin-Token"},
@@ -68,7 +74,9 @@ class SessionService:
     def list_statuses(self) -> dict[str, dict]:
         """返回全部平台登录态。"""
         return {
-            platform: self.check(platform).__dict__
+            platform: (
+                self._check_feishu() if platform == "feishu" else self.check_live(platform)
+            ).__dict__
             for platform in PLATFORM_LOGIN_URLS
         }
 
@@ -79,6 +87,41 @@ class SessionService:
         if platform == "feishu":
             return self._check_feishu()
         return self._check_browser_session(platform)
+
+    def check_live(self, platform: str) -> SessionStatus:
+        """检查本地登录态后访问平台页面，确认会话未被重定向到登录页。"""
+        status = self.check(platform)
+        if status.status != STATUS_LOGGED_IN or platform == "feishu":
+            return status
+
+        storage = self._load_storage(platform)
+        active, message = _probe_browser_session(platform, _sanitize_storage(storage))
+        if active is True:
+            return SessionStatus(
+                platform=status.platform,
+                status=STATUS_LOGGED_IN,
+                login_url=status.login_url,
+                message=message,
+                expires_at=status.expires_at,
+                storage_path=status.storage_path,
+            )
+        if active is False:
+            return SessionStatus(
+                platform=status.platform,
+                status=STATUS_NEEDS_LOGIN,
+                login_url=status.login_url,
+                message=message,
+                expires_at=status.expires_at,
+                storage_path=status.storage_path,
+            )
+        return SessionStatus(
+            platform=status.platform,
+            status=STATUS_UNKNOWN,
+            login_url=status.login_url,
+            message=message,
+            expires_at=status.expires_at,
+            storage_path=status.storage_path,
+        )
 
     def import_storage(self, platform: str, storage_state: dict) -> Path:
         """把浏览器导出的 storage_state 合并写入 data/sessions/<platform>/storage.json。"""
@@ -236,6 +279,67 @@ def has_platform_auth_cookie(cookies: list[dict], platform: str) -> bool:
     return False
 
 
+_LOGIN_PAGE_TEXT: dict[str, tuple[str, ...]] = {
+    "tomato": ("请登录", "未登录"),
+    "delivery": ("请登录", "未登录", "飞书授权登录"),
+    "ocean": ("请登录", "未登录"),
+}
+
+
+def _probe_browser_session(
+    platform: str, storage: dict[str, Any]
+) -> tuple[bool | None, str]:
+    """用独立无头页面探测真实访问结果，不写入登录态文件。"""
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(
+                    storage_state=storage,
+                    ignore_https_errors=True,
+                )
+                try:
+                    page = context.new_page()
+                    resp = page.goto(
+                        _LIVE_PROBE_URLS[platform],
+                        wait_until="domcontentloaded",
+                        timeout=30000,
+                    )
+                    page.wait_for_timeout(1000)
+                    url = page.url.lower()
+                    body = page.inner_text("body") or ""
+                    if resp and resp.status >= 500:
+                        return None, f"服务器错误 (HTTP {resp.status})，无法判断登录态"
+                    if not _is_authenticated_probe_url(platform, url):
+                        return False, "页面已跳转到登录页"
+                    if any(marker in body for marker in _LOGIN_PAGE_TEXT[platform]):
+                        return False, "页面显示未登录"
+                    if "500" in body and "Internal Server Error" in body:
+                        return None, "服务器返回 500 错误，无法判断登录态"
+                    return True, "实时页面校验通过"
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        logger.warning("平台实时登录态检查失败: platform=%s error=%s", platform, exc)
+        return None, "实时校验失败，请检查网络或稍后重试"
+
+
+def _is_authenticated_probe_url(platform: str, url: str) -> bool:
+    """判断实时探测是否仍停留在平台受保护页面。"""
+    lowered = url.lower()
+    if "login" in lowered or "auth" in lowered:
+        return False
+    if platform == "tomato":
+        return "/sale/" in lowered
+    if platform == "delivery":
+        return "/video/dramas" in lowered or "/autotask" in lowered
+    return True
+
+
 def _dedupe_cookies(cookies: list[dict]) -> list[dict]:
     """按 name/domain/path 去重，新导入的 Cookie 优先。"""
     seen: set[tuple[str, str, str]] = set()
@@ -251,6 +355,50 @@ def _dedupe_cookies(cookies: list[dict]) -> list[dict]:
         seen.add(key)
         result.append(cookie)
     return result
+
+
+_VALID_SAMESITE = {"Strict", "Lax", "None"}
+
+
+def _sanitize_storage(storage: dict[str, Any]) -> dict[str, Any]:
+    """清洗 storage_state 中的 cookie，确保 Playwright 兼容。"""
+    cookies = storage.get("cookies") or []
+    sanitized: list[dict] = []
+    for cookie in cookies:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get("name")
+        value = cookie.get("value")
+        domain = cookie.get("domain")
+        if not name or not isinstance(name, str):
+            continue
+        if value is None or not isinstance(value, str):
+            continue
+        if not domain or not isinstance(domain, str):
+            continue
+        path = cookie.get("path")
+        if not path or not isinstance(path, str):
+            path = "/"
+        result: dict = {
+            "name": name,
+            "value": value,
+            "domain": domain,
+            "path": path,
+        }
+        expires = cookie.get("expires")
+        if isinstance(expires, (int, float)):
+            result["expires"] = float(expires)
+        else:
+            result["expires"] = -1.0
+        if cookie.get("httpOnly") is not None:
+            result["httpOnly"] = bool(cookie["httpOnly"])
+        if cookie.get("secure") is not None:
+            result["secure"] = bool(cookie["secure"])
+        same_site = cookie.get("sameSite")
+        if isinstance(same_site, str) and same_site in _VALID_SAMESITE:
+            result["sameSite"] = same_site
+        sanitized.append(result)
+    return {"cookies": sanitized, "origins": storage.get("origins") or []}
 
 
 def _cookie_is_active(cookie: dict, now: float) -> bool:

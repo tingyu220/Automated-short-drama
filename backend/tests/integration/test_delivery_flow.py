@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from backend.application.services.delivery_flow_service import DeliveryFlowService
+from backend.application.services.plan_rules import build_promotion_config_name
 from backend.domain.plans.plan_spec import PlanSpec
 from backend.infrastructure.database.engine import create_app_engine
 from backend.infrastructure.database.migrations import run_migrations
@@ -44,7 +45,9 @@ class TestDeliveryFlowIntegration:
                     for link_type, link in links.items()
                 }
                 assert config_ids == {
-                    link_type: f"{link_type}-TOMATO-剧A"
+                    link_type: build_promotion_config_name(
+                        link_type, "TOMATO", "剧A"
+                    )
                     for link_type in links
                 }
 

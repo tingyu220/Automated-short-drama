@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue"
-import { ElButton, ElMessage } from "element-plus"
+import { ElButton, ElMessage, ElOption, ElSelect } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import RuleEditor, {
   type MappingRow,
@@ -13,6 +13,7 @@ import { useDeliveryConfigStore } from "@/app/stores/deliveryConfig"
 import { useSessionStore } from "@/app/stores/session"
 import { useRuleStore } from "@/app/stores/rule"
 import type { PriceRuleInput } from "@/widgets/rule-simulator/simulator"
+import { rulesLayoutClass } from "./layout"
 
 const ruleStore = useRuleStore()
 const deliveryConfigStore = useDeliveryConfigStore()
@@ -41,21 +42,18 @@ const platformResources = computed(() => {
 })
 
 const CATEGORIES = [
-  { key: "link", label: "链接规则" },
   { key: "price", label: "价格模板" },
   { key: "material", label: "素材规则" },
-  { key: "account", label: "账户数据" },
   { key: "cid", label: "CID预设" },
   { key: "adPreset", label: "广告预设" },
   { key: "openPreset", label: "开户预设" },
-  { key: "douyin", label: "抖音号" },
   { key: "platform", label: "平台资源" },
-  { key: "naming", label: "任务命名" },
   { key: "runtime", label: "运行参数" },
   { key: "version", label: "版本管理" }
 ]
 
 const selectedCategory = ref("price")
+const selectedVersionRuleSetId = ref("")
 
 const priceRules = ref<PriceRuleInput[]>([])
 
@@ -93,10 +91,14 @@ const selectedRuleSetId = computed(() => {
     return materialRuleSets.value[0]?.id ?? null
   }
   if (selectedCategory.value === "version") {
-    return priceRuleSets.value[0]?.id ?? null
+    return selectedVersionRuleSetId.value || null
   }
   return null
 })
+
+const selectedVersionRuleSet = computed(() =>
+  ruleStore.ruleSets.find((ruleSet) => ruleSet.id === selectedRuleSetId.value) ?? null
+)
 
 async function loadVersions() {
   if (selectedRuleSetId.value) {
@@ -121,6 +123,9 @@ async function load() {
 
 onMounted(load)
 watch(selectedCategory, () => {
+  if (selectedCategory.value === "version" && !selectedVersionRuleSetId.value) {
+    selectedVersionRuleSetId.value = ruleStore.ruleSets[0]?.id ?? ""
+  }
   void loadVersions()
   void deliveryConfigStore.loadForCategory(selectedCategory.value)
 })
@@ -212,7 +217,10 @@ async function onSaveSettings(
       </template>
     </PageHeader>
 
-    <div class="rules-page__layout">
+    <div
+      class="rules-page__layout"
+      :class="rulesLayoutClass(selectedCategory)"
+    >
       <aside class="rules-nav" aria-label="规则分类">
         <button
           v-for="category in CATEGORIES"
@@ -243,14 +251,32 @@ async function onSaveSettings(
           :settings="deliveryConfigStore.settings"
           :settings-options="deliveryConfigStore.settingsOptions"
           :settings-saving="deliveryConfigStore.settingsSaving"
+          :versions="ruleStore.versions"
           v-model:price-rules="priceRules"
           @save-draft="onSaveDraft"
           @publish="(payload) => onPublish(payload.ruleSetId)"
           @save-mapping="onSaveMapping"
           @save-settings="onSaveSettings"
         />
+        <section v-if="selectedCategory === 'version'" class="rules-page__version-picker">
+          <span class="rules-page__version-picker-label">选择规则集</span>
+          <ElSelect
+            v-model="selectedVersionRuleSetId"
+            placeholder="请选择规则集"
+            @change="loadVersions"
+          >
+            <ElOption
+              v-for="ruleSet in ruleStore.ruleSets"
+              :key="ruleSet.id"
+              :label="ruleSet.name + '（' + ruleSet.category + '）'"
+              :value="ruleSet.id"
+            />
+          </ElSelect>
+        </section>
         <RulePublishPanel
+          v-if="selectedCategory === 'version'"
           :rule-set-id="selectedRuleSetId"
+          :rule-set-name="selectedVersionRuleSet?.name"
           :versions="ruleStore.versions"
           :loading="ruleStore.loading"
           :error="ruleStore.error"
@@ -261,7 +287,7 @@ async function onSaveSettings(
         />
       </div>
 
-      <aside class="rules-page__side">
+      <aside v-if="selectedCategory === 'price'" class="rules-page__side">
         <RuleSimulator :rules="priceRules" />
       </aside>
     </div>
@@ -296,9 +322,17 @@ async function onSaveSettings(
 
 .rules-page__layout {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 340px;
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.rules-page__layout--with-side {
+  grid-template-columns: 200px minmax(0, 1fr) 340px;
+}
+
+.rules-page__layout--full .rules-page__main {
+  width: 100%;
 }
 
 .rules-nav {
@@ -344,6 +378,28 @@ async function onSaveSettings(
 
 .rules-page__side {
   min-width: 0;
+}
+
+.rules-page__version-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-bg-panel);
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-panel);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.rules-page__version-picker-label {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.rules-page__version-picker :deep(.el-select) {
+  width: 260px;
 }
 
 @media (max-width: 1360px) {

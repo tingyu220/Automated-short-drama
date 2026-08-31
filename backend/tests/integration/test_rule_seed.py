@@ -36,10 +36,10 @@ class TestSeedDefaultsIntegration:
                 result = seed_rules_from_defaults(session, DEFAULTS_PATH)
                 session.commit()
 
-                assert result.created_rules == 10
+                assert result.created_rules == 11
                 assert result.skipped_rules == 0
-                assert _count_rows(session, "rule_set") == 3
-                assert _count_rows(session, "rule_version") == 3
+                assert _count_rows(session, "rule_set") == 4
+                assert _count_rows(session, "rule_version") == 4
                 assert _count_rows(session, "rule_parameter") == 7
                 assert _count_rows(session, "template_price_rule") == 2
                 assert _count_rows(session, "material_rule_range") == 5
@@ -60,9 +60,9 @@ class TestSeedDefaultsIntegration:
                 session.commit()
 
                 assert second.created_rules == 0
-                assert second.skipped_rules == 10
-                assert _count_rows(session, "rule_set") == 3
-                assert _count_rows(session, "rule_version") == 3
+                assert second.skipped_rules == 11
+                assert _count_rows(session, "rule_set") == 4
+                assert _count_rows(session, "rule_version") == 4
                 assert _count_rows(session, "rule_parameter") == 7
                 assert _count_rows(session, "template_price_rule") == 2
                 assert _count_rows(session, "material_rule_range") == 5
@@ -101,7 +101,7 @@ class TestAutomationWorkerAutoSeed:
             engine = create_app_engine(db_url)
             session = Session(engine)
             try:
-                assert _count_rows(session, "rule_set") == 3
+                assert _count_rows(session, "rule_set") == 4
                 assert _count_rows(session, "template_price_rule") == 2
                 assert _count_rows(session, "material_rule_range") == 5
             finally:

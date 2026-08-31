@@ -42,6 +42,9 @@ class FakePlanBuilder:
         material_ranges,
         rule_version,
         include_test=False,
+        *,
+        material_ids=None,
+        title_packages=None,
     ) -> PlanSpec:
         self.calls.append(
             {
@@ -53,6 +56,8 @@ class FakePlanBuilder:
                 "material_ranges": list(material_ranges),
                 "rule_version": rule_version,
                 "include_test": include_test,
+                "material_ids": list(material_ids or []),
+                "title_packages": list(title_packages or []),
             }
         )
         return PlanSpec(
@@ -62,6 +67,8 @@ class FakePlanBuilder:
             link_set=dict(links),
             account_cids=[str(account["cid"]) for account in accounts],
             expected_project_count=3,
+            material_ids=list(material_ids or []),
+            title_packages=list(title_packages or []),
         )
 
 

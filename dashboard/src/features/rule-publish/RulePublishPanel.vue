@@ -11,6 +11,7 @@ import type { RuleVersion } from "@/app/stores/rule"
 
 const props = defineProps<{
   ruleSetId: string | null
+  ruleSetName?: string
   versions: RuleVersion[]
   loading?: boolean
   error?: string | null
@@ -71,7 +72,9 @@ function confirmPublish() {
   <section class="rule-publish" aria-label="版本管理">
     <header class="rule-publish__header">
       <div>
-        <h2 class="rule-publish__title">版本管理</h2>
+        <h2 class="rule-publish__title">
+          版本管理<span v-if="ruleSetName" class="rule-publish__rule-name"> · {{ ruleSetName }}</span>
+        </h2>
         <p class="rule-publish__hint">
           发布后新任务使用新版本，运行中任务继续使用配置快照。
         </p>
@@ -116,7 +119,10 @@ function confirmPublish() {
         class="rule-publish__item"
       >
         <div class="rule-publish__item-main">
-          <span class="rule-publish__version">v{{ version.version }}</span>
+          <span class="rule-publish__version">
+            <span v-if="ruleSetName" class="rule-publish__version-name">{{ ruleSetName }}</span>
+            v{{ version.version }}
+          </span>
           <span class="rule-publish__status">
             <StatusDot
               :color="versionStatusMeta(version.status).color"
@@ -165,6 +171,10 @@ function confirmPublish() {
   font-weight: 600;
 }
 
+.rule-publish__rule-name {
+  color: var(--color-primary-600);
+}
+
 .rule-publish__hint {
   margin-top: 4px;
   color: var(--color-text-tertiary);
@@ -201,10 +211,20 @@ function confirmPublish() {
 }
 
 .rule-publish__version {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   color: var(--color-text-primary);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: var(--font-size-body);
   font-weight: 600;
+}
+
+.rule-publish__version-name {
+  color: var(--color-text-secondary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
 }
 
 .rule-publish__status {

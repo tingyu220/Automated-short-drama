@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 from backend.domain.errors.domain_error import ExternalAdapterError, ValidationError
+from backend.domain.plans.delivery_form_spec import DeliveryFormSpec
 from backend.domain.plans.plan_spec import PlanSpec
 from backend.domain.ports.adapters import (
     DeliverySystemAdapter,
@@ -51,25 +53,72 @@ class DeliveryFlowService:
             raise ExternalAdapterError(f"巨量产品创建后校验失败: {product_id}")
         return product_id
 
-    def submit_plan(self, plan_spec: PlanSpec) -> str:
+    def submit_plan(self, plan_spec: PlanSpec | DeliveryFormSpec) -> str:
         """校验计划规格并委托投放系统提交，返回外部任务 ID。"""
+        if isinstance(plan_spec, DeliveryFormSpec):
+            if not plan_spec.cid_rows:
+                raise ValidationError("DeliveryFormSpec 至少需要 1 个 CID")
+            if not plan_spec.material_ids:
+                raise ValidationError("DeliveryFormSpec 至少需要 1 条素材")
+            return self._delivery.submit_plan(plan_spec)
         if not plan_spec.link_set:
             raise ValidationError("PlanSpec 至少需要 1 条推广链接")
         if not plan_spec.account_cids:
             raise ValidationError("PlanSpec 至少需要 1 个 CID")
         return self._delivery.submit_plan(plan_spec)
 
+    def find_task_by_idempotency_key(self, task_name: str) -> str | None:
+        """按唯一任务名称对账，防止结果不确定时重复提交。"""
+        return self._delivery.find_task_by_idempotency_key(task_name)
+
     def poll_until_completed(
         self,
         external_task_id: str,
-        max_polls: int = 24,
+        max_polls: int | None = None,
         interval_seconds: int = 0,
+        *,
+        poll_interval_seconds: int = 300,
+        timeout_seconds: int = 7200,
+        heartbeat_interval_seconds: int = 30,
+        on_wait: Callable[[], None] | None = None,
+        now_fn: Callable[[], float] = time.monotonic,
+        sleep_fn: Callable[[float], None] = time.sleep,
     ) -> str:
-        """轮询任务状态，COMPLETED 立即返回，超过 max_polls 返回 TIMEOUT。"""
-        for _ in range(max_polls):
+        """按生产截止时间轮询；max_polls 仅保留给旧测试/调用兼容。"""
+        if max_polls is not None:
+            for _ in range(max_polls):
+                status = self._delivery.poll_task_status(external_task_id)
+                if status == "COMPLETED":
+                    return status
+                if interval_seconds > 0:
+                    sleep_fn(interval_seconds)
+            return "TIMEOUT"
+
+        if (
+            poll_interval_seconds <= 0
+            or timeout_seconds <= 0
+            or heartbeat_interval_seconds <= 0
+        ):
+            raise ValueError("轮询间隔和超时必须为正数")
+        deadline = now_fn() + timeout_seconds
+        while now_fn() < deadline:
             status = self._delivery.poll_task_status(external_task_id)
             if status == "COMPLETED":
                 return status
-            if interval_seconds > 0:
-                time.sleep(interval_seconds)
+            remaining = deadline - now_fn()
+            if remaining <= 0:
+                break
+            wait_seconds = min(float(poll_interval_seconds), remaining)
+            if on_wait is None:
+                sleep_fn(wait_seconds)
+                continue
+            waited = 0.0
+            while waited < wait_seconds:
+                on_wait()
+                chunk = min(
+                    float(heartbeat_interval_seconds),
+                    wait_seconds - waited,
+                )
+                sleep_fn(chunk)
+                waited += chunk
         return "TIMEOUT"

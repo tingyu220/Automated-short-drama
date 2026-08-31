@@ -31,6 +31,14 @@
         {"name": "min_price", "value": 8.8, "data_type": "float", "description": "最低价格"},
         {"name": "max_price", "value": 13.8, "data_type": "float", "description": "最高价格"}
       ]
+    },
+    {
+      "key": "material_rules",
+      "name": "素材规则",
+      "category": "素材规则",
+      "description": "素材数量区间与分组策略",
+      "version": "1",
+      "parameters": []
     }
   ],
   "template_price_rules": [

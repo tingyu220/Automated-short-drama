@@ -16,7 +16,9 @@ from backend.domain.tasks.drama_task import DramaTask, TaskStatus
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL_QUEUE_STATES = frozenset({QueueState.COMPLETED, QueueState.CANCELLED})
+_TERMINAL_QUEUE_STATES = frozenset(
+    {QueueState.COMPLETED, QueueState.CANCELLED, QueueState.DRY_RUN}
+)
 
 
 @dataclass(frozen=True)
@@ -63,16 +65,16 @@ class DeliveryScheduler:
         skipped = 0
 
         for source in fetched:
-            existing = self._task_repo.get(source.id)
+            existing = _find_existing_task(self._task_repo, source)
             if existing is None:
-                self._task_repo.add(_new_task(source))
+                task = self._task_repo.add(_new_task(source))
                 created += 1
             else:
                 _sync_task(existing, source)
-                self._task_repo.update(existing)
+                task = self._task_repo.update(existing)
                 updated += 1
 
-            if self._ensure_queue_item(source):
+            if self._ensure_queue_item(task):
                 enqueued += 1
             else:
                 skipped += 1
@@ -100,6 +102,9 @@ class DeliveryScheduler:
     def _ensure_queue_item(self, task: DramaTask) -> bool:
         """确保任务存在 WAITING_TIME 队列项；终态任务不自动重跑。"""
         items = self._queue_repo.list_by_task(task.id)
+        if task.status == TaskStatus.DRY_RUN:
+            # 演练终态必须由人工点击入队，避免扫描/重启后自动再次演练。
+            return False
         active = next(
             (item for item in items if item.state not in _TERMINAL_QUEUE_STATES),
             None,
@@ -122,20 +127,58 @@ class DeliveryScheduler:
 def _new_task(source: DramaTask) -> DramaTask:
     """按飞书来源创建初始态任务。"""
     return DramaTask(
-        id=source.id,
+        id=str(uuid.uuid4()) if source.source_key else source.id,
+        source_key=source.source_key,
         sheet_row=source.sheet_row,
         drama_name=source.drama_name,
         platform=source.platform,
         available_time=as_utc(source.available_time),
         owner=source.owner,
         status=TaskStatus.WAITING_TIME,
+        source_links=dict(source.source_links),
+        link_set=dict(source.link_set),
+        link_status=source.link_status,
     )
 
 
 def _sync_task(existing: DramaTask, source: DramaTask) -> None:
     """已有任务仅同步平台、投放时间，不覆盖运行状态。"""
+    existing.sheet_row = source.sheet_row
+    existing.source_key = source.source_key or existing.source_key
+    existing.drama_name = source.drama_name
     existing.platform = source.platform
     existing.available_time = as_utc(source.available_time)
+    if existing.link_status != "VALIDATED":
+        existing.source_links = dict(source.source_links)
+    if source.link_status == "VALIDATED" and source.link_set:
+        existing.link_set = dict(source.link_set)
+        existing.link_status = "VALIDATED"
+
+
+def _find_existing_task(task_repo: TaskRepository, source: DramaTask) -> DramaTask | None:
+    """优先按 source_key 匹配，兜底按剧名+投放时间+平台匹配。"""
+    finder = getattr(task_repo, "get_by_source_key", None)
+    if source.source_key and callable(finder):
+        task = finder(source.source_key)
+        if task is not None:
+            return task
+    fallback = getattr(task_repo, "get_by_drama_and_time", None)
+    if callable(fallback):
+        task = fallback(
+            source.drama_name, as_utc(source.available_time), source.platform
+        )
+        if task is not None:
+            logger.warning(
+                "source_key 未命中但按剧名+时间兜底匹配到已有任务 "
+                "drama=%s available_time=%s source_key_old=%s source_key_new=%s",
+                source.drama_name,
+                source.available_time,
+                task.source_key,
+                source.source_key,
+            )
+            task.source_key = source.source_key
+            return task
+    return task_repo.get(source.id)
 
 
 def _new_queue_item(task: DramaTask) -> QueueItem:

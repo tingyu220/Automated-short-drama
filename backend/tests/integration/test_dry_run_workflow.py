@@ -27,7 +27,6 @@ from backend.infrastructure.database.repositories.rule_repository import (
 )
 from backend.platforms.mock.mock_delivery_system import MockDeliverySystemAdapter
 from backend.platforms.mock.mock_feishu import MockFeishuAdapter
-from backend.platforms.mock.mock_ocean_engine import MockOceanEngineAdapter
 from backend.platforms.mock.mock_tomato import MockTomatoAdapter
 
 DEFAULTS_PATH = PROJECT_ROOT / "configs" / "defaults" / "rules.json"
@@ -35,7 +34,6 @@ FULL_STEP_ORDER = [
     "LINK_EXTRACTION",
     "DRAMA_ASSET",
     "PROMOTION_CONFIG",
-    "PRODUCT",
     "PLAN_SPEC",
     "SUBMIT",
     "POLL",
@@ -92,6 +90,7 @@ class NotFoundTomatoAdapter(MockTomatoAdapter):
     def extract_iaa_link(
         self,
         drama_name: str,
+        available_time: datetime,
         episode_count: int,
         selected_episode: int,
     ):
@@ -124,7 +123,7 @@ class TestDryRunWorkflowIntegration:
         workflow = DryRunWorkflow(
             MockTomatoAdapter(),
             delivery,
-            MockOceanEngineAdapter(),
+            None,
             price_rules,
             allow_final_submit=True,
             use_real_adapters=True,
@@ -150,14 +149,14 @@ class TestDryRunWorkflowIntegration:
         assert result.plan_spec.task_name == "DRY-TOMATO-剧A"
         assert result.plan_spec.link_set == result.links
         assert result.plan_spec.account_cids == ["cid-1", "cid-2"]
-        assert result.plan_spec.product_id
+        assert result.plan_spec.product_id is None
         assert result.external_task_id.startswith("task-")
 
     def test_jubian_uses_existing_links(self, price_rules) -> None:
         workflow = DryRunWorkflow(
             MockTomatoAdapter(),
             MockDeliverySystemAdapter(),
-            MockOceanEngineAdapter(),
+            None,
             price_rules,
             allow_final_submit=True,
             use_real_adapters=True,
@@ -193,7 +192,7 @@ class TestDryRunWorkflowIntegration:
         workflow = DryRunWorkflow(
             NotFoundTomatoAdapter(),
             delivery,
-            MockOceanEngineAdapter(),
+            None,
             price_rules,
             allow_final_submit=True,
             use_real_adapters=True,
@@ -219,7 +218,7 @@ class TestDryRunWorkflowIntegration:
         workflow = DryRunWorkflow(
             MockTomatoAdapter(),
             MockDeliverySystemAdapter(),
-            MockOceanEngineAdapter(),
+            None,
             price_rules,
             allow_final_submit=True,
             use_real_adapters=True,

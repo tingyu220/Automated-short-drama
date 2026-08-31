@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from backend.application.services.plan_rules import build_promotion_config_name
 from backend.domain.ports.adapters import (
     DeliverySystemAdapter as DeliverySystemAdapterProtocol,
 )
@@ -80,11 +81,11 @@ class DeliverySystemAdapter(DeliverySystemAdapterProtocol):
         self._record(
             "ensure_promotion_config", asset_id, link_type, link, drama_name, platform
         )
+        config_name = build_promotion_config_name(link_type, platform, drama_name)
         if self._dry_run:
-            return f"{link_type}-{platform}-{drama_name}"
-        config_name = f"{link_type}-{platform}-{drama_name}"
+            return config_name
         return PromotionConfigPage(self._page, self._selectors).create_missing(
-            config_name, link, drama_name
+            config_name, link, drama_name, link_type
         )
 
     def submit_plan(self, plan_spec: Any) -> str:
@@ -100,6 +101,13 @@ class DeliverySystemAdapter(DeliverySystemAdapterProtocol):
         if self._dry_run:
             return "PENDING"
         return TaskStatusPage(self._page, self._selectors).poll(external_task_id)
+
+    def find_task_by_idempotency_key(self, task_name: str) -> str | None:
+        """按唯一任务名称对账，供 RESULT_UNCERTAIN 恢复。"""
+        self._record("find_task_by_idempotency_key", task_name)
+        if self._dry_run:
+            return None
+        return TaskStatusPage(self._page, self._selectors).find_by_task_name(task_name)
 
     def _record(self, name: str, *args: Any, **kwargs: Any) -> None:
         if not self._dry_run:

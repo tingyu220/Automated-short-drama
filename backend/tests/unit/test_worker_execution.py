@@ -158,7 +158,7 @@ def _make_context(worker_id: str = "worker-1"):
 class TestWorkerExecutionService:
     """WorkerExecutionService.process_claimed 单元测试。"""
 
-    def test_success_flow_completes_queue_task_and_ledger(self):
+    def test_legacy_mock_executor_finishes_as_dry_run_without_ledger(self):
         task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
         service = WorkerExecutionService(
             mock_worker_executor(),
@@ -172,17 +172,12 @@ class TestWorkerExecutionService:
         result = service.process_claimed(item, NOW)
 
         assert result.queue_item_id == "queue-1"
-        assert result.final_queue_state == QueueState.COMPLETED
-        assert result.ledger_id
+        assert result.final_queue_state == QueueState.DRY_RUN
+        assert result.ledger_id is None
         assert result.event_count == 1
-        assert queue_repo.get("queue-1").state == QueueState.COMPLETED
-        assert task_repo.get("task-1").status == TaskStatus.COMPLETED
-        ledger = ledger_repo.list_by_task(task.id)[0]
-        assert ledger.final_status == "COMPLETED"
-        assert ledger.album_id == "album-mock"
-        assert ledger.product_id == "product-mock"
-        assert ledger.external_task_id == "mock-external-1"
-        assert ledger.task_name == "mock-task"
+        assert queue_repo.get("queue-1").state == QueueState.DRY_RUN
+        assert task_repo.get("task-1").status == TaskStatus.DRY_RUN
+        assert ledger_repo.list_by_task(task.id) == []
         events = event_repo.list_events(task_id=task.id)
         assert [e.event_type for e in events] == ["MOCK_EXECUTED"]
 
@@ -212,6 +207,37 @@ class TestWorkerExecutionService:
         assert len(errors) == 1
         assert errors[0].message
 
+    def test_link_ready_completes_queue_without_completion_ledger(self):
+        """链接已就绪是本期终态，但不能冒充完整上剧完成。"""
+        task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
+
+        def executor(_task, _item):
+            return ExecutionOutcome(
+                status="LINK_READY",
+                events=[
+                    ExecutionEvent(
+                        task_id=task.id,
+                        event_type="LINK_READY",
+                        message="推广内容已搭建",
+                        level=EventLevel.INFO,
+                    )
+                ],
+            )
+
+        result = WorkerExecutionService(
+            executor,
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            event_repo,
+            "worker-1",
+        ).process_claimed(item, NOW)
+
+        assert result.final_queue_state == QueueState.COMPLETED
+        assert result.ledger_id is None
+        assert task_repo.get(task.id).status == "LINK_READY"
+        assert ledger_repo.list_by_task(task.id) == []
+
     def test_failed_outcome_moves_queue_and_task_to_failed(self):
         task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
 
@@ -235,6 +261,41 @@ class TestWorkerExecutionService:
         assert task_repo.get("task-1").status == TaskStatus.FAILED
         errors = event_repo.list_events(task_id=task.id, level=EventLevel.ERROR)
         assert len(errors) == 1
+
+    def test_dry_run_is_recorded_without_success_ledger(self):
+        """演练结果必须可见，但绝不能复用真实完成闭环。"""
+        task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()
+
+        def executor(_task, _item):
+            return ExecutionOutcome(
+                status="DRY_RUN",
+                events=[
+                    ExecutionEvent(
+                        task_id=task.id,
+                        event_type="DRY_RUN",
+                        message="最终提交已关闭",
+                        level=EventLevel.INFO,
+                    )
+                ],
+            )
+
+        service = WorkerExecutionService(
+            executor,
+            queue_repo,
+            task_repo,
+            ledger_repo,
+            event_repo,
+            "worker-1",
+        )
+
+        result = service.process_claimed(item, NOW)
+
+        assert result.final_queue_state == QueueState.DRY_RUN
+        assert result.ledger_id is None
+        assert queue_repo.get("queue-1").state == QueueState.DRY_RUN
+        assert task_repo.get("task-1").status == TaskStatus.DRY_RUN
+        assert ledger_repo.list_by_task(task.id) == []
+        assert event_repo.list_events(task_id=task.id)[0].level == EventLevel.INFO
 
     def test_executor_exception_is_treated_as_manual_review(self):
         task, item, queue_repo, task_repo, ledger_repo, event_repo = _make_context()

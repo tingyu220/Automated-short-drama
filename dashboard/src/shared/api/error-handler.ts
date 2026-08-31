@@ -44,6 +44,9 @@ function extractBusinessCode(payload: unknown): string | null {
 function extractBusinessMessage(payload: unknown): string | null {
   const record = asRecord(payload)
   if (!record) return null
+  if (typeof record.detail === "string" && record.detail) {
+    return record.detail
+  }
   const detail = asRecord(record.detail)
   if (detail && typeof detail.message === "string" && detail.message) {
     return detail.message

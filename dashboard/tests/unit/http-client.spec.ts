@@ -125,6 +125,18 @@ describe("http-client", () => {
     expect(error).toMatchObject({ code: "UNKNOWN", status: 404 })
   })
 
+  it("保留 FastAPI 字符串 detail 作为错误原因", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: "Chrome 正在使用 Cookies" })
+    } as Response)
+
+    await expect(apiGet("/sessions/delivery/chrome-import")).rejects.toMatchObject({
+      message: "Chrome 正在使用 Cookies"
+    })
+  })
+
   it("204 无响应体时返回 undefined", async () => {
     fetchMock.mockResolvedValue({
       ok: true,

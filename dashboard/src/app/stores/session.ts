@@ -32,7 +32,7 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function check(platform: string) {
+  async function check(platform: string): Promise<PlatformSession | null> {
     loading.value = true
     error.value = null
     try {
@@ -43,8 +43,10 @@ export const useSessionStore = defineStore("session", () => {
       if (status.status === "logged_in") {
         running.value = { ...running.value, [platform]: false }
       }
+      return status
     } catch (err) {
       error.value = toErrorMessage(err)
+      return null
     } finally {
       loading.value = false
     }
@@ -83,7 +85,21 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function importFromChrome(platform: string) {
+  async function reset(platform: string) {
+    loading.value = true
+    error.value = null
+    try {
+      await apiPost(`/sessions/${platform}/reset`)
+      running.value = { ...running.value, [platform]: false }
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      loading.value = false
+      await check(platform)
+    }
+  }
+
+  async function importFromChrome(platform: string): Promise<PlatformSession | null> {
     loading.value = true
     error.value = null
     try {
@@ -98,8 +114,10 @@ export const useSessionStore = defineStore("session", () => {
         [platform]: result.status
       }
       running.value = { ...running.value, [platform]: false }
+      return result.status
     } catch (err) {
       error.value = toErrorMessage(err)
+      return null
     } finally {
       loading.value = false
     }
@@ -126,6 +144,7 @@ export const useSessionStore = defineStore("session", () => {
     check,
     login,
     finish,
+    reset,
     importFromChrome
   }
 })

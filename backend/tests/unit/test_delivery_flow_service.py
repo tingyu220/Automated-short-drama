@@ -200,3 +200,28 @@ class TestPollUntilCompleted:
 
         assert status == "TIMEOUT"
         assert len(delivery.poll_calls) == 3
+
+    def test_production_polling_waits_five_minutes_and_renews_lease(self) -> None:
+        delivery = FakeDeliverySystemAdapter(poll_statuses=["SUBMITTED"] * 24)
+        service = DeliveryFlowService(delivery, FakeOceanEngineAdapter())
+        clock = [0.0]
+        sleeps: list[float] = []
+        renewals: list[float] = []
+
+        def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        status = service.poll_until_completed(
+            "task-1",
+            poll_interval_seconds=300,
+            timeout_seconds=7200,
+            on_wait=lambda: renewals.append(clock[0]),
+            now_fn=lambda: clock[0],
+            sleep_fn=sleep,
+        )
+
+        assert status == "TIMEOUT"
+        assert len(delivery.poll_calls) == 24
+        assert sleeps == [30] * 240
+        assert renewals == [value * 30 for value in range(240)]

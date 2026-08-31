@@ -29,6 +29,8 @@ class ProductionStep:
     cid_configs: list[dict] = field(default_factory=list)
     product_id: str | None = None
     material_count: int = 3
+    material_ids: list[str] = field(default_factory=list)
+    title_packages: list[str] = field(default_factory=list)
     material_ranges: list[MaterialRuleRange] = field(default_factory=list)
     rule_version: str | None = None
     include_test: bool = False
@@ -116,4 +118,6 @@ class ProductionValidationRunner:
             step.material_ranges,
             step.rule_version,
             include_test=step.include_test,
+            material_ids=step.material_ids,
+            title_packages=step.title_packages,
         )

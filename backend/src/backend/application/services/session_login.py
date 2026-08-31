@@ -69,7 +69,10 @@ class SessionLoginManager:
         """用户确认已登录，触发立即保存。"""
         with self._lock:
             task = self._tasks.get(platform)
-            if not task or not task.running:
+            if not task:
+                return False
+            if not task.running:
+                task.running = False
                 return False
             task.stop.set()
             return True
@@ -78,6 +81,16 @@ class SessionLoginManager:
         with self._lock:
             task = self._tasks.get(platform)
             return bool(task and task.running)
+
+    def reset(self, platform: str) -> bool:
+        """强制重置登录状态（用于浏览器崩溃后按钮卡住）。"""
+        with self._lock:
+            task = self._tasks.get(platform)
+            if task:
+                task.running = False
+                task.stop.set()
+                self._tasks.pop(platform, None)
+            return True
 
     def storage_path(self, platform: str) -> Path:
         return self._service.storage_path(platform)
@@ -94,6 +107,7 @@ class SessionLoginManager:
                     user_data_dir=str(user_data_dir),
                     headless=False,
                     viewport={"width": 1400, "height": 900},
+                    ignore_https_errors=True,
                 )
                 try:
                     ok = _login_page(platform, context, task.stop)

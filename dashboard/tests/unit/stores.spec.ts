@@ -93,16 +93,84 @@ describe("useTaskStore", () => {
     expect(store.detail).toEqual(payload)
   })
 
-  it("enqueueTask 调用对应 API", async () => {
+  it("enqueueTask 携带用户选择的运行终点", async () => {
     const fetchMock = stubFetch()
     fetchMock.mockResolvedValue(okJson({ id: "q1", state: "WAITING_TIME" }))
 
     const store = useTaskStore()
-    await store.enqueueTask("t1")
+    await store.enqueueTask("t1", "LINK_EXTRACTION")
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tasks/t1/enqueue",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ target_stage: "LINK_EXTRACTION" })
+      })
+    )
+  })
+
+  it("confirmDramaMatch 调用专用候选确认接口", async () => {
+    const fetchMock = stubFetch()
+    fetchMock.mockResolvedValue(okJson({ id: "q1", state: "QUEUED" }))
+
+    const store = useTaskStore()
+    await store.confirmDramaMatch("t1", "/detail/a")
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks/t1/confirm-drama-match",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ locator_key: "/detail/a" })
+      })
+    )
+  })
+
+  it("scanTasks 手动执行调度扫描并返回统计", async () => {
+    const fetchMock = stubFetch()
+    const payload = {
+      day: "2026-08-19",
+      created_tasks: 3,
+      updated_tasks: 1,
+      enqueued: 2,
+      skipped: 1,
+      mode: "real"
+    }
+    fetchMock.mockResolvedValue(okJson(payload))
+
+    const store = useTaskStore()
+    const result = await store.scanTasks()
+
+    expect(result).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks/scan",
       expect.objectContaining({ method: "POST" })
+    )
+  })
+
+  it("previewTodayImport 将所选人员传给后端筛选，不确认写入", async () => {
+    const fetchMock = stubFetch()
+    const payload = {
+      preview_id: "preview-1",
+      business_date: "2026-08-17",
+      source_count: 1,
+      new_count: 1,
+      duplicate_count: 0,
+      invalid_count: 0,
+      rows: [],
+      errors: []
+    }
+    fetchMock.mockResolvedValue(okJson(payload))
+
+    const store = useTaskStore()
+    const result = await store.previewTodayImport("2026-08-17", "田雨")
+
+    expect(result).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/drama-import/preview",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ business_date: "2026-08-17", operator_name: "田雨" })
+      })
     )
   })
 })

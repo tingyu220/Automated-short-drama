@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 
 from backend.application.services.delivery_flow_service import DeliveryFlowService
 from backend.application.services.plan_validation_service import ValidationIssue
-from backend.domain.errors.domain_error import NotFoundError
+from backend.domain.errors.domain_error import (
+    ExternalAdapterError,
+    NotFoundError,
+    ValidationError,
+)
+from backend.domain.plans.delivery_form_spec import build_delivery_form_spec
 from backend.domain.ledger.task_ledger import TaskLedger
 from backend.domain.plans.plan_spec import PlanSpec
 from backend.domain.ports.adapters import (
@@ -42,6 +47,8 @@ class DeliveryOutcome:
     external_task_id: str | None = None
     issues: list[ValidationIssue] = field(default_factory=list)
     ledger_id: str | None = None
+    failure_code: str | None = None
+    retry_safe: bool = False
 
 
 class StandardDeliveryService:
@@ -60,9 +67,12 @@ class StandardDeliveryService:
         allow_final_submit: bool | None = None,
         use_real_adapters: bool | None = None,
         poll_interval_seconds: int = 0,
+        poll_timeout_seconds: int = 7200,
+        on_poll_wait=None,
     ) -> None:
         settings = Settings()
         self._validation = validation
+        # 商品库由投放系统自动配置；保留 ocean 参数兼容现有装配，不再调用。
         self._delivery_flow = DeliveryFlowService(delivery, ocean)
         self._submit_guard = submit_guard
         self._feishu = feishu
@@ -77,6 +87,8 @@ class StandardDeliveryService:
             False if use_real_adapters is None else use_real_adapters
         )
         self._poll_interval_seconds = poll_interval_seconds
+        self._poll_timeout_seconds = poll_timeout_seconds
+        self._on_poll_wait = on_poll_wait
 
     def execute(
         self,
@@ -108,6 +120,20 @@ class StandardDeliveryService:
                 ],
             )
 
+        try:
+            delivery_form = build_delivery_form_spec(plan_spec, cid_configs)
+        except ValidationError as exc:
+            return DeliveryOutcome(
+                status=VALIDATION_FAILED,
+                issues=[
+                    ValidationIssue(
+                        code="DELIVERY_FORM_INVALID",
+                        message=str(exc),
+                        field="delivery_form",
+                    )
+                ],
+            )
+
         external_task_id: str | None = None
         try:
             asset = self._delivery_flow.ensure_drama_asset(
@@ -117,27 +143,52 @@ class StandardDeliveryService:
                 self._delivery_flow.ensure_promotion_config(
                     asset, link_type, link, plan_spec.platform
                 )
-            product_id = self._delivery_flow.create_product(
-                asset.album_id,
-                {
-                    "drama_name": plan_spec.drama_name,
-                    "album_id": asset.album_id,
-                    "link": asset.link,
-                },
-            )
-            external_task_id = self._delivery_flow.submit_plan(plan_spec)
-            status = self._delivery_flow.poll_until_completed(
-                external_task_id,
-                max_polls=_MAX_POLLS,
-                interval_seconds=self._poll_interval_seconds,
-            )
+            try:
+                external_task_id = self._delivery_flow.submit_plan(delivery_form)
+            except ExternalAdapterError as exc:
+                if exc.code != "RESULT_UNCERTAIN":
+                    raise
+                external_task_id = self._delivery_flow.find_task_by_idempotency_key(
+                    plan_spec.task_name
+                )
+                if external_task_id is None:
+                    return DeliveryOutcome(
+                        status=MANUAL_REVIEW,
+                        failure_code="RESULT_UNCERTAIN",
+                        retry_safe=True,
+                    )
+            if self._poll_interval_seconds > 0:
+                status = self._delivery_flow.poll_until_completed(
+                    external_task_id,
+                    poll_interval_seconds=self._poll_interval_seconds,
+                    timeout_seconds=self._poll_timeout_seconds,
+                    on_wait=self._on_poll_wait,
+                )
+            else:
+                status = self._delivery_flow.poll_until_completed(
+                    external_task_id,
+                    max_polls=_MAX_POLLS,
+                )
             if status != COMPLETED:
                 return DeliveryOutcome(
                     status=MANUAL_REVIEW,
                     external_task_id=external_task_id,
                 )
             return self._finalize_completed(
-                plan_spec, task_id, external_task_id, product_id
+                plan_spec, task_id, external_task_id, ""
+            )
+        except ExternalAdapterError as exc:
+            logger.exception(
+                "标准投放外部操作失败: task_id=%s external_task_id=%s code=%s",
+                task_id,
+                external_task_id,
+                exc.code,
+            )
+            return DeliveryOutcome(
+                status=MANUAL_REVIEW,
+                external_task_id=external_task_id,
+                failure_code=exc.code,
+                retry_safe=False,
             )
         except Exception:
             logger.exception(
@@ -177,7 +228,9 @@ class StandardDeliveryService:
         )
         saved = self._ledger_repo.add(ledger)
         try:
-            self._feishu.write_completion(task_id)
+            self._feishu.write_completion(
+                str(task.sheet_row) if task.sheet_row is not None else task_id
+            )
         except Exception:
             logger.exception(
                 "M=1 写入失败，台账标记 FAILED: task_id=%s ledger_id=%s",

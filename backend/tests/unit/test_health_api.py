@@ -35,7 +35,7 @@ class TestHealthz:
         assert response.json()["allow_final_submit"] is False
 
     def test_response_contains_expected_fields(self, client):
-        """响应包含 app_name/version/database/config 字段。"""
+        """响应包含应用、基础设施和运行环境状态。"""
         data = client.get("/healthz").json()
         assert "app_name" in data
         assert data["app_name"] == "short-drama-delivery-workbuddy"
@@ -44,6 +44,9 @@ class TestHealthz:
         assert "database" in data
         assert "config" in data
         assert data["config"] == "ok"
+        assert data["environment"] == "MOCK"
+        assert data["worker_environment"] is None
+        assert data["environment_switching"] is False
 
     def test_unregistered_route_returns_404(self, client):
         """未注册路由返回 404。"""
@@ -102,6 +105,7 @@ class TestHealthz:
         response = TestClient(create_app()).get("/healthz")
         assert response.status_code == 200
         assert response.json()["worker_heartbeat"] is True
+        assert response.json()["active_worker_id"] == "worker-1"
 
     def test_worker_heartbeat_false_without_lease(self, monkeypatch, tmp_path):
         """无活跃租约时 worker_heartbeat=false。"""
@@ -117,3 +121,4 @@ class TestHealthz:
         response = TestClient(create_app()).get("/healthz")
         assert response.status_code == 200
         assert response.json()["worker_heartbeat"] is False
+        assert response.json()["active_worker_id"] is None

@@ -5,6 +5,7 @@ import hashlib
 import json
 from typing import Any
 
+from backend.application.services.plan_rules import build_promotion_config_name
 from backend.domain.ports.adapters import DeliverySystemAdapter, DramaAsset
 
 
@@ -41,7 +42,7 @@ class MockDeliverySystemAdapter(DeliverySystemAdapter):
         platform: str,
     ) -> str:
         del asset_id, link  # Mock 无需真实资源/链接内容
-        return f"{link_type}-{platform}-{drama_name}"
+        return build_promotion_config_name(link_type, platform, drama_name)
 
     def submit_plan(self, plan_spec: Any) -> str:
         return f"task-{self._digest(plan_spec)}"
@@ -50,6 +51,10 @@ class MockDeliverySystemAdapter(DeliverySystemAdapter):
         count = self._poll_counts.get(external_task_id, 0)
         self._poll_counts[external_task_id] = count + 1
         return "SUBMITTED" if count < self.poll_rounds_before_completed else "COMPLETED"
+
+    def find_task_by_idempotency_key(self, task_name: str) -> str | None:
+        """Mock 提交确定成功，不产生结果不确定对账项。"""
+        return None
 
     @staticmethod
     def _digest(value: Any) -> str:

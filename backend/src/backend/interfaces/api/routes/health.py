@@ -9,6 +9,9 @@ from sqlalchemy import select, text
 from backend.infrastructure.config.settings import Settings
 from backend.infrastructure.database.session import SessionLocal
 from backend.infrastructure.database.models.worker import WorkerLeaseRecord
+from backend.infrastructure.database.repositories.runtime_environment_repository import (
+    SqlAlchemyRuntimeEnvironmentRepository,
+)
 
 router = APIRouter()
 
@@ -22,6 +25,11 @@ def healthz():
     settings = Settings()
     database_status = "ok"
     worker_online = False
+    active_worker_id = None
+    environment = "MOCK"
+    worker_environment = None
+    environment_switching = False
+    operator_match_group = False
     try:
         session = SessionLocal()
         try:
@@ -40,6 +48,18 @@ def healthz():
                 .first()
             )
             worker_online = lease is not None
+            active_worker_id = lease.worker_id if lease is not None else None
+            try:
+                runtime_environment = (
+                    SqlAlchemyRuntimeEnvironmentRepository(session).get()
+                )
+                environment = runtime_environment.desired_mode
+                worker_environment = runtime_environment.worker_mode
+                environment_switching = runtime_environment.switching
+                operator_match_group = runtime_environment.operator_match_group
+            except Exception:
+                # 兼容尚未执行运行环境迁移的旧数据库。
+                pass
         finally:
             session.close()
     except Exception:
@@ -51,6 +71,11 @@ def healthz():
         "version": "0.1.0",
         "allow_final_submit": settings.allow_final_submit,
         "worker_heartbeat": worker_online,
+        "active_worker_id": active_worker_id,
         "database": database_status,
         "config": "ok",
+        "environment": environment,
+        "worker_environment": worker_environment,
+        "environment_switching": environment_switching,
+        "operator_match_group": operator_match_group,
     }

@@ -16,13 +16,14 @@ _TRANSITIONS: dict[str, set[str]] = {
         "COMPLETED",
         "CANCELLED",
     },
-    "RUNNING": {"COMPLETED", "RETRY_WAIT", "PAUSED", "MANUAL_REVIEW", "FAILED", "CANCELLED", "QUEUED"},
+    "RUNNING": {"COMPLETED", "DRY_RUN", "RETRY_WAIT", "PAUSED", "MANUAL_REVIEW", "FAILED", "CANCELLED", "QUEUED"},
     "RETRY_WAIT": {"QUEUED", "MANUAL_REVIEW"},
     "PAUSED": {"QUEUED", "RUNNING", "CANCELLED"},
     "MANUAL_REVIEW": {"QUEUED", "CANCELLED"},
     "COMPLETED": set(),
     "CANCELLED": set(),
     "FAILED": {"QUEUED"},
+    "DRY_RUN": set(),
 }
 
 

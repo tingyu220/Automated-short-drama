@@ -113,6 +113,7 @@ class NotFoundTomatoAdapter(MockTomatoAdapter):
     def extract_iaa_link(
         self,
         drama_name: str,
+        available_time: datetime,
         episode_count: int,
         selected_episode: int,
     ):
@@ -122,7 +123,7 @@ class NotFoundTomatoAdapter(MockTomatoAdapter):
 class NoIapTomatoAdapter(MockTomatoAdapter):
     """模拟 IAP 无匹配模板，只保留 IAA。"""
 
-    def scan_iap_templates(self, drama_name: str) -> list:
+    def scan_iap_templates(self, drama_name: str, available_time: datetime) -> list:
         return []
 
 
@@ -174,7 +175,7 @@ class TestDryRunFullScenario:
         assert delivery.config_ids
         assert delivery.config_link_types == ["IAA", "2.9", "9.9"]
         assert result.plan_spec is not None
-        assert result.plan_spec.product_id
+        assert result.plan_spec.product_id is None
         assert result.external_task_id
         assert feishu.write_links_calls == 0
         assert feishu.write_completion_calls == 0

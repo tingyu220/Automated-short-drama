@@ -79,6 +79,35 @@ class FailingDeliveryAdapter(StuckDeliveryAdapter):
         raise ExternalAdapterError("投放提交失败")
 
 
+class UncertainPollingAdapter(StuckDeliveryAdapter):
+    def poll_task_status(self, external_task_id: str) -> str:
+        raise ExternalAdapterError(
+            "轮询时未读到任务行",
+            code="RESULT_UNCERTAIN",
+        )
+
+
+class UncertainDeliveryAdapter(StuckDeliveryAdapter):
+    """提交结果不确定，通过任务名执行对账。"""
+
+    def __init__(self, reconciled_task_id: str | None) -> None:
+        self.reconciled_task_id = reconciled_task_id
+        self.reconcile_calls: list[str] = []
+
+    def submit_plan(self, plan_spec: PlanSpec) -> str:
+        raise ExternalAdapterError(
+            "提交后未读到任务 ID",
+            code="RESULT_UNCERTAIN",
+        )
+
+    def find_task_by_idempotency_key(self, task_name: str) -> str | None:
+        self.reconcile_calls.append(task_name)
+        return self.reconciled_task_id
+
+    def poll_task_status(self, external_task_id: str) -> str:
+        return "COMPLETED"
+
+
 class FakeLedgerRepository:
     """内存态 LedgerRepository fake。"""
 
@@ -131,9 +160,24 @@ def _spec() -> PlanSpec:
         task_name="番茄#端免剧A20260807ubr-1",
         link_set={"IAA": "mock://iaa/剧A"},
         account_cids=["cid-1"],
+        promotion_configs={"IAA": "iaa-番茄-剧A"},
         material_groups=MaterialPlan(1, 2, 3, 1, 3),
         expected_project_count=3,
+        material_ids=["material-1", "material-2", "material-3"],
+        title_packages=[f"title-{index}" for index in range(6)],
     )
+
+
+def _cid_configs() -> list[dict]:
+    return [
+        {
+            "cid": "cid-1",
+            "delivery_type": "IAA",
+            "douyin_account": "douyin-1",
+            "account_open_preset": "open-1",
+            "ad_preset": "ad-1",
+        }
+    ]
 
 
 def _task() -> DramaTask:
@@ -189,7 +233,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == VALIDATION_FAILED
@@ -199,6 +243,85 @@ class TestStandardDeliveryService:
         assert delivery.submit_calls == 0
         assert feishu.read_status("task-1") == "PENDING"
         assert ledger_repo.list_all() == []
+
+    def test_invalid_real_form_is_blocked_before_any_submit(self) -> None:
+        delivery = RecordingDeliveryAdapter()
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=delivery,
+            feishu=MockFeishuAdapter(),
+            ledger_repo=FakeLedgerRepository(),
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+        spec = _spec()
+        spec.material_ids = []
+
+        outcome = service.execute(
+            spec,
+            _cid_configs(),
+            "task-1",
+            "worker-1",
+        )
+
+        assert outcome.status == VALIDATION_FAILED
+        assert outcome.issues[0].code == "DELIVERY_FORM_INVALID"
+        assert delivery.submit_calls == 0
+
+    def test_result_uncertain_found_by_task_name_continues_without_resubmit(self):
+        delivery = UncertainDeliveryAdapter("task-reconciled")
+        feishu = MockFeishuAdapter()
+        ledger_repo = FakeLedgerRepository()
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=delivery,
+            feishu=feishu,
+            ledger_repo=ledger_repo,
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+
+        outcome = service.execute(_spec(), _cid_configs(), "task-1", "worker-1")
+
+        assert outcome.status == COMPLETED
+        assert outcome.external_task_id == "task-reconciled"
+        assert delivery.reconcile_calls == [_spec().task_name]
+
+    def test_result_uncertain_absent_is_marked_retry_safe_after_reconciliation(self):
+        delivery = UncertainDeliveryAdapter(None)
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=delivery,
+            feishu=MockFeishuAdapter(),
+            ledger_repo=FakeLedgerRepository(),
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+
+        outcome = service.execute(_spec(), _cid_configs(), "task-1", "worker-1")
+
+        assert outcome.status == MANUAL_REVIEW
+        assert outcome.failure_code == "RESULT_UNCERTAIN"
+        assert outcome.retry_safe is True
+        assert delivery.reconcile_calls == [_spec().task_name]
+
+    def test_poll_result_uncertain_is_retry_unsafe_and_keeps_external_id(self):
+        service = _service(
+            validation=FakeValidation(ValidationReport(passed=True, issues=[])),
+            delivery=UncertainPollingAdapter(),
+            feishu=MockFeishuAdapter(),
+            ledger_repo=FakeLedgerRepository(),
+            task_repo=FakeTaskRepository({"task-1": _task()}),
+        )
+
+        outcome = service.execute(
+            _spec(),
+            _cid_configs(),
+            "task-1",
+            "worker-1",
+        )
+
+        assert outcome.status == MANUAL_REVIEW
+        assert outcome.external_task_id == "task-ext-timeout"
+        assert outcome.failure_code == "RESULT_UNCERTAIN"
+        assert outcome.retry_safe is False
 
     def test_guard_disabled_returns_dry_run_without_m(self) -> None:
         delivery = RecordingDeliveryAdapter()
@@ -215,7 +338,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == DRY_RUN
@@ -246,7 +369,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == DRY_RUN
@@ -267,7 +390,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == COMPLETED
@@ -281,6 +404,33 @@ class TestStandardDeliveryService:
         assert ledgers[0].task_id == "task-1"
         assert ledgers[0].external_task_id == outcome.external_task_id
 
+    def test_success_does_not_create_ocean_engine_product(self) -> None:
+        class ExplodingOcean:
+            def create_product(self, *_args, **_kwargs):
+                raise AssertionError("商品库已由投放系统自动配置")
+
+            def verify_product(self, *_args, **_kwargs):
+                raise AssertionError("商品库已由投放系统自动配置")
+
+        feishu = MockFeishuAdapter()
+        ledger_repo = FakeLedgerRepository()
+        service = StandardDeliveryService(
+            FakeValidation(ValidationReport(passed=True, issues=[])),
+            RecordingDeliveryAdapter(),
+            ExplodingOcean(),
+            submit_guard_module,
+            feishu,
+            ledger_repo,
+            FakeTaskRepository({"task-1": _task()}),
+            allow_final_submit=True,
+            use_real_adapters=True,
+        )
+
+        outcome = service.execute(_spec(), _cid_configs(), "task-1", "worker-1")
+
+        assert outcome.status == COMPLETED
+        assert ledger_repo.list_all()[0].product_id == ""
+
     def test_timeout_returns_manual_review_without_m(self) -> None:
         feishu = MockFeishuAdapter()
         ledger_repo = FakeLedgerRepository()
@@ -293,7 +443,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -314,7 +464,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -334,7 +484,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW
@@ -357,7 +507,7 @@ class TestStandardDeliveryService:
         )
 
         outcome = service.execute(
-            _spec(), [], "task-1", "worker-1"
+            _spec(), _cid_configs(), "task-1", "worker-1"
         )
 
         assert outcome.status == MANUAL_REVIEW

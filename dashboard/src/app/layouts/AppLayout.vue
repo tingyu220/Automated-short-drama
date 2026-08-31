@@ -20,7 +20,7 @@ function toggleSidebar() {
       <AppTopbar @toggle-sidebar="toggleSidebar" />
       <div v-if="!systemStore.allowFinalSubmit" class="dry-run-banner">
         <span class="dry-run-banner__icon">&#9888;</span>
-        <span>Dry Run / 最终提交已关闭</span>
+        <span>最终计划提交已关闭</span>
       </div>
       <main class="app-content">
         <RouterView />
@@ -36,4 +36,20 @@ function toggleSidebar() {
 .dry-run-banner { display: flex; align-items: center; gap: 8px; padding: 8px 24px; background: var(--color-warning); color: #fff; font-size: 13px; font-weight: 500; }
 .dry-run-banner__icon { font-size: 16px; }
 .app-content { flex: 1; min-height: 0; padding: 24px; background: var(--color-bg-page); overflow-y: auto; }
+
+@media (max-width: 720px) {
+  .app-main,
+  .app-main.sidebar-collapsed {
+    margin-left: 56px;
+  }
+
+  .dry-run-banner {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+
+  .app-content {
+    padding: 12px;
+  }
+}
 </style>

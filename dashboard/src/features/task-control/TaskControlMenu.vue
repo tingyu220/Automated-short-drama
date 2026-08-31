@@ -22,17 +22,18 @@ const items: Array<{ action: TaskAction; label: string; danger: boolean }> = [
   { action: "pause", label: "暂停", danger: true },
   { action: "resume", label: "恢复", danger: false },
   { action: "retry", label: "重试当前步骤", danger: false },
-  { action: "cancel", label: "取消任务", danger: true }
+  { action: "cancel", label: "取消任务", danger: true },
+  { action: "delete", label: "删除任务", danger: true }
 ]
 
-const TERMINAL_STATES = ["COMPLETED", "CANCELLED"]
+const TERMINAL_STATES = ["COMPLETED", "CANCELLED", "DRY_RUN"]
 const ACTIVE_STATES = ["WAITING_TIME", "QUEUED", "CLAIMED", "RUNNING"]
 const RETRYABLE_STATES = ["RETRY_WAIT", "MANUAL_REVIEW", "FAILED"]
 
 const available = computed(() =>
   items.filter((item) => {
     if (props.disabled.includes(item.action)) return false
-    const state = props.task.queue_state
+    const state = props.task.queue_state?.toUpperCase()
     if (item.action === "manual_enqueue") {
       return !state || TERMINAL_STATES.includes(state)
     }
@@ -47,6 +48,9 @@ const available = computed(() =>
     }
     if (item.action === "cancel") {
       return Boolean(state) && !TERMINAL_STATES.includes(state ?? "")
+    }
+    if (item.action === "delete") {
+      return true
     }
     return true
   })

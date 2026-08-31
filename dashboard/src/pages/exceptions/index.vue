@@ -29,6 +29,13 @@ async function load() {
 onMounted(load)
 
 function handleAction(payload: { item: ExceptionItem; action: ExceptionAction }) {
+  if (payload.action === "view_task") {
+    void router.push({
+      path: "/tasks",
+      query: { task_id: payload.item.task_id }
+    })
+    return
+  }
   if (payload.action === "modify_config") {
     void router.push("/rules")
   }

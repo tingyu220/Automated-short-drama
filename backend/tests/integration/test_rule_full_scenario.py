@@ -57,12 +57,18 @@ class TestRuleFullScenario:
         seed_rules_from_defaults(session, DEFAULTS_PATH)
         session.commit()
 
-        # 1. seed 后规则配置三张核心表均存在
-        assert _count_rows(session, "rule_set") == 3
-        assert _count_rows(session, "rule_version") == 3
+        # 1. seed 后 defaults 中四个规则集及对应初始版本均存在
+        assert _count_rows(session, "rule_set") == 4
+        assert _count_rows(session, "rule_version") == 4
         assert _count_rows(session, "rule_parameter") == 7
 
         rule_repo = SqlAlchemyRuleRepository(session)
+        assert {rule.key for rule in rule_repo.list_rule_sets()} == {
+            "iaa_episode_threshold",
+            "iap_price_2_9",
+            "iap_price_9_9",
+            "material_rules",
+        }
         price_repo = SqlAlchemyPriceRuleRepository(session)
         material_repo = SqlAlchemyMaterialRuleRepository(session)
         snapshot_repo = SqlAlchemySnapshotRepository(session)

@@ -29,5 +29,7 @@ class PlanSpec:
     promotion_configs: dict[str, str] = field(default_factory=dict)
     material_groups: MaterialPlan | None = None
     expected_project_count: int = 0
+    material_ids: list[str] = field(default_factory=list)
+    title_packages: list[str] = field(default_factory=list)
     rule_version: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

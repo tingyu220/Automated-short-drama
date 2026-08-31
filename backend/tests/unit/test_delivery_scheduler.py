@@ -25,6 +25,7 @@ def _task(
     task_id: str,
     available_time: datetime,
     drama_name: str = "示例短剧",
+    source_key: str = "",
 ) -> DramaTask:
     """构造测试用 DramaTask，task_id 即飞书行号。"""
     return DramaTask(
@@ -35,6 +36,7 @@ def _task(
         available_time=available_time,
         owner="测试",
         status=TaskStatus.WAITING_TIME,
+        source_key=source_key,
     )
 
 
@@ -50,6 +52,27 @@ class FakeTaskRepository:
 
     def get(self, task_id: str) -> DramaTask | None:
         return self._tasks.get(task_id)
+
+    def get_by_source_key(self, source_key: str) -> DramaTask | None:
+        return next(
+            (task for task in self._tasks.values() if task.source_key == source_key),
+            None,
+        )
+
+    def get_by_drama_and_time(
+        self, drama_name: str, available_time: datetime, platform: str
+    ) -> DramaTask | None:
+        return next(
+            (
+                task
+                for task in self._tasks.values()
+                if task.drama_name == drama_name
+                and as_utc(task.available_time) == as_utc(available_time)
+                and task.platform == platform
+                and task.status not in ("CANCELLED", "COMPLETED", "DRY_RUN")
+            ),
+            None,
+        )
 
     def update(self, task: DramaTask) -> DramaTask:
         self._tasks[task.id] = task
@@ -211,6 +234,23 @@ class TestDeliveryScheduler:
         item = queue_repo.list_by_task(task.id)[0]
         assert item.state == QueueState.CANCELLED
 
+    def test_dry_run_queue_item_is_not_auto_requeued(self):
+        """历史演练终态只能由人工重新入队，调度扫描不得偷偷再跑。"""
+        now = _shanghai(SCAN_DAY, 0, 30)
+        task = _task("2", _shanghai(SCAN_DAY, 10))
+        task.status = TaskStatus.DRY_RUN
+        task_repo = FakeTaskRepository({task.id: task})
+        queue_repo = FakeQueueRepository()
+        scheduler = DeliveryScheduler(
+            RecordingFeishu([task]), task_repo, queue_repo, now_fn=lambda: now
+        )
+
+        result = scheduler.tick(now)
+
+        assert result.enqueued == 0
+        assert result.skipped == 1
+        assert queue_repo.list_by_task(task.id) == []
+
     def test_task_available_time_is_normalized_to_utc(self):
         now = _shanghai(SCAN_DAY, 0, 30)
         local_time = _shanghai(SCAN_DAY, 10)
@@ -227,6 +267,23 @@ class TestDeliveryScheduler:
         stored = scheduler._task_repo.get("2")
         assert stored.available_time == as_utc(local_time)
         assert stored.available_time.tzinfo is not None
+
+    def test_first_scan_preserves_jubian_source_links(self):
+        now = _shanghai(SCAN_DAY, 0, 30)
+        task = _task("2", _shanghai(SCAN_DAY, 10))
+        task.platform = "JUBIAN"
+        task.source_links = {"IAA": "aweme://from-sheet"}
+        scheduler = DeliveryScheduler(
+            RecordingFeishu([task]),
+            FakeTaskRepository(),
+            FakeQueueRepository(),
+            now_fn=lambda: now,
+        )
+
+        scheduler.tick(now)
+
+        stored = scheduler._task_repo.get("2")
+        assert stored.source_links == {"IAA": "aweme://from-sheet"}
 
     def test_available_time_update_syncs_queue_available_at(self):
         now = _shanghai(SCAN_DAY, 0, 30)
@@ -251,6 +308,30 @@ class TestDeliveryScheduler:
         assert task_repo.get(task.id).available_time == as_utc(
             updated.available_time
         )
+
+    def test_top_insert_updates_sheet_row_without_creating_duplicate_task(self):
+        """若再次按飞书行号建任务，顶部插入会重复提取同一部剧。"""
+        now = _shanghai(SCAN_DAY, 0, 30)
+        source_key = "stable-drama-key"
+        first = _task("2", _shanghai(SCAN_DAY, 10), source_key=source_key)
+        feishu = RecordingFeishu([first])
+        task_repo = FakeTaskRepository()
+        queue_repo = FakeQueueRepository()
+        scheduler = DeliveryScheduler(feishu, task_repo, queue_repo)
+
+        scheduler.tick(now)
+        stored = next(iter(task_repo._tasks.values()))
+        feishu._tasks = [
+            _task("3", _shanghai(SCAN_DAY, 10), source_key=source_key)
+        ]
+
+        result = scheduler.tick(now)
+
+        assert result.created_tasks == 0
+        assert result.updated_tasks == 1
+        assert len(task_repo._tasks) == 1
+        assert stored.sheet_row == 3
+        assert len(queue_repo.list_by_task(stored.id)) == 1
 
     def test_existing_queued_item_is_skipped_without_reset(self):
         now = _shanghai(SCAN_DAY, 0, 30)

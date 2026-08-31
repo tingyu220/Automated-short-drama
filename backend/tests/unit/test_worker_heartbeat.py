@@ -9,6 +9,7 @@ from backend.application.services.worker_heartbeat import (
     is_lease_active,
     list_expired_leases,
     release_lease,
+    renew_execution_lease,
     _now,
 )
 from backend.domain.worker.worker_lease import (
@@ -16,6 +17,7 @@ from backend.domain.worker.worker_lease import (
     STATUS_STOPPED,
     WorkerLease,
 )
+from backend.domain.queue.queue_item import QueueItem, QueueState
 
 FIXED_NOW = datetime(2026, 8, 6, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -164,6 +166,38 @@ class TestHeartbeat:
         )
         assert result.worker_id == "w1"
         assert repo._records["w1"].worker_id == "w1"
+
+    def test_execution_heartbeat_extends_worker_and_queue_lease(self):
+        lease_repo = FakeWorkerLeaseRepository({"w1": _lease("w1")})
+        item = QueueItem(
+            id="q1",
+            task_id="t1",
+            state=QueueState.RUNNING,
+            claimed_by="w1",
+            lease_until=FIXED_NOW,
+        )
+
+        class QueueRepo:
+            def get(self, item_id):
+                return item if item_id == "q1" else None
+
+            def update(self, updated):
+                return updated
+
+        renewed = renew_execution_lease(
+            lease_repo,
+            QueueRepo(),
+            "q1",
+            "w1",
+            "host1",
+            100,
+            60,
+            now=FIXED_NOW,
+        )
+
+        assert renewed is True
+        assert item.lease_until == FIXED_NOW + timedelta(seconds=60)
+        assert lease_repo._records["w1"].lease_until == item.lease_until
 
 
 class TestReleaseLease:

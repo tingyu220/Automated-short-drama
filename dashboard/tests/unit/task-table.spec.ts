@@ -7,11 +7,14 @@ const row: TaskView = {
   id: "t1",
   drama_name: "测试剧",
   platform: "番茄",
+  end_type: "NATIVE",
   available_time: "2026-08-06T10:00:00",
   status: "RUNNING",
   owner: null,
   queue_state: "RUNNING",
   updated_at: "2026-08-06T09:00:00",
+  current_stage: "PROMOTION_CONFIG",
+  target_stage: "LINK_READY",
   current_step: "config",
   iaa: "READY",
   price_9_9: "READY",
@@ -53,6 +56,7 @@ describe("TaskTable", () => {
     })
     expect(wrapper.text()).toContain("测试剧")
     expect(wrapper.text()).toContain("番茄")
+    expect(wrapper.text()).toContain("搭建推广内容")
 
     const buttons = wrapper.findAll(".task-table__action-button")
     await buttons[0].trigger("click")
@@ -66,5 +70,38 @@ describe("TaskTable", () => {
     expect(wrapper.emitted("command")).toEqual([
       [{ task: row, action: "cancel" }]
     ])
+  })
+
+  it("可运行任务直接提供提取链接和搭建链接操作", async () => {
+    const readyRow: TaskView = {
+      ...row,
+      queue_state: "COMPLETED",
+      status: "LINK_EXTRACTED"
+    }
+    const wrapper = mount(TaskTable, {
+      props: { rows: [readyRow], loading: false, error: null }
+    })
+
+    await wrapper.get('[aria-label="提取链接：测试剧"]').trigger("click")
+    await wrapper.get('[aria-label="搭建链接：测试剧"]').trigger("click")
+
+    expect(wrapper.emitted("run")).toEqual([
+      [{ task: readyRow, targetStage: "LINK_EXTRACTION" }],
+      [{ task: readyRow, targetStage: "LINK_READY" }]
+    ])
+  })
+
+  it("演练完成任务显示入队而不是继续", () => {
+    const dryRunRow: TaskView = {
+      ...row,
+      queue_state: "DRY_RUN",
+      status: "DRY_RUN"
+    }
+    const wrapper = mount(TaskTable, {
+      props: { rows: [dryRunRow], loading: false, error: null }
+    })
+
+    expect(wrapper.text()).toContain("入队")
+    expect(wrapper.text()).not.toContain("继续")
   })
 })

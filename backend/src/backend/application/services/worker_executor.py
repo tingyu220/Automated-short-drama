@@ -9,6 +9,15 @@ from backend.application.services import submit_guard
 from backend.application.services.account_allocation_service import (
     AccountAllocationService,
 )
+from backend.application.services.account_assignment_service import (
+    AccountAssignmentService,
+    AssignmentStatus,
+)
+from backend.application.services.delivery_config_service import (
+    DeliveryConfigSnapshotService,
+)
+from backend.application.services.delivery_flow_service import DeliveryFlowService
+from backend.application.services.link_readiness_service import LinkReadinessService
 from backend.application.services.plan_rules import (
     AccountRoutingRule,
     MaterialGroupRule,
@@ -22,13 +31,22 @@ from backend.application.services.standard_delivery_service import (
     DRY_RUN as DELIVERY_DRY_RUN,
     StandardDeliveryService,
 )
-from backend.application.services.tomato_extraction_service import extract_iaa, scan_iap
+from backend.application.services.task_preparation_service import (
+    READY as PREPARATION_READY,
+    PreparationOutcome,
+    TaskPreparationService,
+)
 from backend.application.services.worker_execution import (
     ExecutionOutcome,
     STATUS_COMPLETED,
+    STATUS_DRY_RUN,
     STATUS_MANUAL_REVIEW,
+    STATUS_LINK_EXTRACTED,
+    STATUS_LINK_READY,
 )
 from backend.domain.execution.execution_event import EventLevel, ExecutionEvent
+from backend.domain.common.timezones import SHANGHAI_TZ, as_utc
+from backend.domain.errors.domain_error import ValidationError
 from backend.domain.ledger.task_ledger import TaskLedger
 from backend.domain.plans.plan_spec import PlanSpec
 from backend.domain.queue.queue_item import QueueItem
@@ -38,10 +56,18 @@ from backend.infrastructure.database.repositories.rule_repository import (
     SqlAlchemyMaterialRuleRepository,
     SqlAlchemyPriceRuleRepository,
 )
+from backend.infrastructure.database.repositories.queue_repository import (
+    SqlAlchemyQueueRepository,
+)
+from backend.infrastructure.database.repositories.account_usage_repository import (
+    SqlAlchemyAccountUsageRepository,
+)
 from backend.infrastructure.database.repositories.task_repository import (
     SqlAlchemyTaskRepository,
 )
-from backend.platforms.mock.mock_account_table import MOCK_ACCOUNT_ROWS
+from backend.infrastructure.database.repositories.workflow_repository import (
+    SqlAlchemyWorkflowRepository,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -51,7 +77,7 @@ if TYPE_CHECKING:
 
 DEFAULT_EPISODE_COUNT = 1
 DEFAULT_MATERIAL_COUNT = 3
-WORKER_RULE_VERSION = "worker-mock-v1"
+WORKER_RULE_VERSION = "worker-v1"
 CONFIG_VERSION = "1.0"
 SUBJECT = "微智造"
 ROLE_DELIVERY_TYPES = {
@@ -88,6 +114,110 @@ class _ScratchLedgerRepository:
         return list(self._ledgers.values())
 
 
+def build_link_readiness_executor(
+    settings: Settings,
+    bundle: AdapterBundle,
+    session: Session,
+    *,
+    use_real_adapters: bool = False,
+    on_poll_wait=None,
+) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
+    """组装当前生产目标：只执行到链接提取或推广内容就绪。"""
+    del settings, on_poll_wait
+    task_repo = SqlAlchemyTaskRepository(session)
+    queue_repo = SqlAlchemyQueueRepository(session)
+    price_rules = SqlAlchemyPriceRuleRepository(
+        session
+    ).list_template_price_rules()
+    preparation = TaskPreparationService(
+        bundle.feishu,
+        bundle.tomato,
+        task_repo,
+        queue_repo,
+        price_rules=price_rules,
+        youxuan=bundle.youxuan,
+    )
+    readiness = LinkReadinessService(
+        preparation,
+        DeliveryFlowService(bundle.delivery, bundle.ocean),
+        task_repo,
+        SqlAlchemyWorkflowRepository(session),
+    )
+
+    def execute(task: DramaTask, _item: QueueItem) -> ExecutionOutcome:
+        outcome = readiness.execute(
+            task,
+            task.target_stage,
+            dry_run=not use_real_adapters,
+            now=datetime.now(timezone.utc),
+        )
+        event = ExecutionEvent(
+            task_id=task.id,
+            event_type=outcome.status,
+            message=_link_readiness_message(outcome.status),
+            level=(
+                EventLevel.ERROR
+                if outcome.status == STATUS_MANUAL_REVIEW
+                else EventLevel.INFO
+            ),
+            context_json={
+                "step_name": task.current_stage,
+                "target_stage": task.target_stage,
+                **outcome.details,
+            },
+        )
+        if outcome.status == STATUS_MANUAL_REVIEW:
+            return ExecutionOutcome(
+                status=STATUS_MANUAL_REVIEW,
+                failure_code=outcome.failure_code,
+                retry_safe=_is_retry_safe(outcome.failure_code),
+                events=[event],
+            )
+        if outcome.status not in {STATUS_LINK_EXTRACTED, STATUS_LINK_READY}:
+            return ExecutionOutcome(
+                status=STATUS_MANUAL_REVIEW,
+                failure_code=outcome.status,
+                retry_safe=False,
+                events=[event],
+            )
+        return ExecutionOutcome(status=outcome.status, events=[event])
+
+    return execute
+
+
+def _link_readiness_message(status: str) -> str:
+    return {
+        STATUS_LINK_EXTRACTED: "番茄链接已提取并冻结",
+        STATUS_LINK_READY: "投放系统剧目与推广内容已搭建",
+        STATUS_MANUAL_REVIEW: "链接准备失败，已转人工处理",
+    }.get(status, f"链接准备结果: {status}")
+
+
+_RETRY_SAFE_CODES = frozenset({
+    "RESULT_UNCERTAIN",
+    "TimeoutError",
+    "SERVER_ERROR",
+    "TOMATO_VIEW_BUTTON_NOT_FOUND",
+    "TOMATO_LINK_VIEW_EMPTY",
+    "TOMATO_LINK_AMBIGUOUS",
+})
+
+_SESSION_EXPIRED_CODES = frozenset({
+    "SESSION_EXPIRED",
+    "TOMATO_SESSION_EXPIRED",
+    "TOMATO_LOGIN_REQUIRED",
+})
+
+
+def _is_retry_safe(failure_code: str | None) -> bool:
+    """超时和临时性错误允许重试；会话失效不允许重试（需先重新登录）。"""
+    if not failure_code:
+        return False
+    if failure_code in _SESSION_EXPIRED_CODES:
+        return False
+    return failure_code in _RETRY_SAFE_CODES
+
+
 def build_worker_executor(
     settings: Settings,
     bundle: AdapterBundle,
@@ -96,6 +226,9 @@ def build_worker_executor(
     include_test: bool = False,
     account_rows: list[AccountRow] | None = None,
     use_real_adapters: bool = False,
+    poll_interval_seconds: int | None = None,
+    on_poll_wait=None,
+    delivery_config=None,
 ) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
     """组装 Worker 真实编排执行器；account_rows 仅用于测试注入。"""
     price_rules = SqlAlchemyPriceRuleRepository(session).list_template_price_rules()
@@ -108,8 +241,22 @@ def build_worker_executor(
         MaterialGroupRule(),
         TaskNameRule(),
     )
-    rows = MOCK_ACCOUNT_ROWS if account_rows is None else account_rows
     scratch_ledger_repo = _ScratchLedgerRepository()
+    task_repo = SqlAlchemyTaskRepository(session)
+    account_usage_repo = SqlAlchemyAccountUsageRepository(session)
+    real_config = delivery_config
+    if use_real_adapters and real_config is None:
+        real_config = DeliveryConfigSnapshotService(
+            settings.data_dir / "extracted"
+        )
+    preparation = TaskPreparationService(
+        bundle.feishu,
+        bundle.tomato,
+        task_repo,
+        SqlAlchemyQueueRepository(session),
+        price_rules=price_rules,
+        youxuan=bundle.youxuan,
+    )
     # 安全默认 False；Mock 验收测试需显式传 True 模拟完整提交链路（与 CLI Mock 模式一致）。
     delivery = StandardDeliveryService(
         PlanValidationService(),
@@ -118,38 +265,109 @@ def build_worker_executor(
         submit_guard,
         bundle.feishu,
         scratch_ledger_repo,
-        SqlAlchemyTaskRepository(session),
+        task_repo,
         allow_final_submit=settings.allow_final_submit,
         use_real_adapters=use_real_adapters,
+        poll_interval_seconds=(
+            settings.poll_interval_seconds
+            if poll_interval_seconds is None
+            else poll_interval_seconds
+        ),
+        poll_timeout_seconds=settings.poll_timeout_seconds,
+        on_poll_wait=on_poll_wait,
     )
 
     def execute(task: DramaTask, item: QueueItem) -> ExecutionOutcome:
-        if task.platform != "TOMATO":
-            return _unsupported_platform(task)
+        if task.link_status != "VALIDATED" or not task.link_set:
+            preparation_outcome = preparation.prepare_task(
+                task,
+                dry_run=not use_real_adapters,
+            )
+            if preparation_outcome.status != PREPARATION_READY:
+                return _link_preparation_failure(task, preparation_outcome)
+            task = task_repo.get(task.id) or task
 
-        links, link_events = _extract_links(task, bundle.tomato, price_rules)
+        links, link_events = _frozen_links(task)
         if links is None:
             return _outcome(STATUS_MANUAL_REVIEW, link_events)
 
-        allocated = _allocate_accounts(
-            task.drama_name, links, include_test, rows
-        )
+        mapping_rows: list[dict] = []
+        resources = {"material_ids": [], "title_packages": []}
+        if use_real_adapters:
+            try:
+                mapping_rows = real_config.mapping_proposal()
+                resources = real_config.task_resources(task.drama_name)
+                _validate_task_resources(resources)
+            except Exception as exc:
+                return _outcome(
+                    STATUS_MANUAL_REVIEW,
+                    [*link_events, _delivery_config_error(task, exc)],
+                )
+
+        if account_rows is not None:
+            allocated = _allocate_accounts(
+                task.drama_name, links, include_test, account_rows
+            )
+            assignment_status = "ACCOUNT_BLOCK_UNAVAILABLE"
+            assignment_reason = "测试注入账户块中无可用账户"
+        else:
+            assignment = AccountAssignmentService(
+                bundle.feishu,
+                usage_repo=account_usage_repo,
+            ).assign(
+                task.drama_name,
+                links,
+                allocated_cids=set(),
+                dry_run=not use_real_adapters,
+                include_test=include_test,
+                task_id=task.id,
+                usage_day=as_utc(task.available_time).astimezone(
+                    SHANGHAI_TZ
+                ).date(),
+                candidate_validator=(
+                    (lambda candidate: _real_cid_configs(candidate, mapping_rows))
+                    if use_real_adapters
+                    else None
+                ),
+            )
+            allocated = (
+                (
+                    assignment.accounts,
+                    (
+                        _real_cid_configs(assignment.accounts, mapping_rows)
+                        if use_real_adapters
+                        else _cid_configs(assignment.accounts)
+                    ),
+                )
+                if assignment.status
+                in {AssignmentStatus.CONFIRMED, AssignmentStatus.DRY_RUN}
+                else None
+            )
+            assignment_status = assignment.status
+            assignment_reason = assignment.reason
         if allocated is None:
-            return _outcome(
-                STATUS_MANUAL_REVIEW,
-                [*link_events, _account_error(task, links)],
+            return _account_assignment_failure(
+                task,
+                links,
+                assignment_status,
+                assignment_reason,
+                link_events,
             )
         accounts, cid_configs = allocated
 
+        material_ids = list(resources.get("material_ids") or [])
+        title_packages = list(resources.get("title_packages") or [])
         spec = plan_builder.build(
             task,
             links,
             accounts,
             None,
-            DEFAULT_MATERIAL_COUNT,
+            len(material_ids) if use_real_adapters else DEFAULT_MATERIAL_COUNT,
             material_ranges,
             WORKER_RULE_VERSION,
             include_test=include_test,
+            material_ids=material_ids,
+            title_packages=title_packages,
         )
         delivery_outcome = delivery.execute(
             spec,
@@ -157,13 +375,21 @@ def build_worker_executor(
             task.id,
             item.claimed_by or "worker-unknown",
         )
-        if delivery_outcome.status not in (
-            DELIVERY_COMPLETED,
-            DELIVERY_DRY_RUN,
-        ):
-            return _outcome(
-                STATUS_MANUAL_REVIEW,
-                [
+        if delivery_outcome.status == DELIVERY_DRY_RUN:
+            return ExecutionOutcome(
+                status=STATUS_DRY_RUN,
+                events=[
+                    *link_events,
+                    _account_event(task, accounts),
+                    _delivery_event(task, delivery_outcome),
+                ],
+            )
+        if delivery_outcome.status != DELIVERY_COMPLETED:
+            return ExecutionOutcome(
+                status=STATUS_MANUAL_REVIEW,
+                failure_code=delivery_outcome.failure_code,
+                retry_safe=delivery_outcome.retry_safe,
+                events=[
                     *link_events,
                     _account_event(task, accounts),
                     _delivery_error(task, delivery_outcome),
@@ -189,49 +415,70 @@ def build_worker_executor(
     return execute
 
 
-def _extract_links(
+def _frozen_links(
     task: DramaTask,
-    tomato,
-    price_rules: list,
 ) -> tuple[dict[str, str] | None, list[ExecutionEvent]]:
-    """番茄 IAA + IAP 链接提取；异常或空链接返回失败事件。"""
-    try:
-        iaa = extract_iaa(task.drama_name, DEFAULT_EPISODE_COUNT, tomato)
-        scan = scan_iap(task.drama_name, tomato, price_rules)
-        links = {"IAA": iaa.promotion_url}
-        if scan.iap_2_9_link is not None:
-            links["2.9"] = scan.iap_2_9_link.promotion_url
-        if scan.iap_9_9_link is not None:
-            links["9.9"] = scan.iap_9_9_link.promotion_url
-    except Exception as exc:
+    """只消费已验证的冻结链接，执行阶段不再访问来源平台。"""
+    links = {
+        key: value
+        for key, value in task.link_set.items()
+        if key in {"IAA", "9.9", "2.9"} and value
+    }
+    if task.link_status != "VALIDATED" or not links:
         return None, [
             ExecutionEvent(
                 task_id=task.id,
                 event_type="LINK_EXTRACTION",
-                message=f"番茄链接提取失败: {exc}",
+                message="任务缺少已验证的冻结链接快照",
                 level=EventLevel.ERROR,
-                context_json={"platform": task.platform},
-            )
-        ]
-    if not links.get("IAA"):
-        return None, [
-            ExecutionEvent(
-                task_id=task.id,
-                event_type="LINK_EXTRACTION",
-                message="未获取到任何可用推广链接",
-                level=EventLevel.ERROR,
-                context_json={"platform": task.platform},
+                context_json={
+                    "platform": task.platform,
+                    "link_status": task.link_status,
+                },
             )
         ]
     return links, [
         ExecutionEvent(
             task_id=task.id,
             event_type="LINK_EXTRACTION",
-            message=f"番茄链接提取完成: {list(links)}",
+            message=f"消费冻结链接快照: {list(links)}",
             level=EventLevel.INFO,
             context_json={"links": links},
         )
     ]
+
+
+def _link_preparation_error(
+    task: DramaTask,
+    preparation_outcome: PreparationOutcome,
+) -> ExecutionEvent:
+    context = {
+        "platform": task.platform,
+        **preparation_outcome.details,
+    }
+    return ExecutionEvent(
+        task_id=task.id,
+        event_type="LINK_EXTRACTION",
+        message=(
+            "到点链接准备未完成: "
+            f"{preparation_outcome.failure_code or preparation_outcome.status}"
+        ),
+        level=EventLevel.ERROR,
+        context_json=context,
+    )
+
+
+def _link_preparation_failure(
+    task: DramaTask,
+    preparation_outcome: PreparationOutcome,
+) -> ExecutionOutcome:
+    """保留同名剧匹配失败码和证据，禁止自动重试。"""
+    return ExecutionOutcome(
+        status=STATUS_MANUAL_REVIEW,
+        failure_code=preparation_outcome.failure_code,
+        retry_safe=False,
+        events=[_link_preparation_error(task, preparation_outcome)],
+    )
 
 
 def _allocate_accounts(
@@ -320,6 +567,74 @@ def _cid_configs(accounts: list[dict]) -> list[dict]:
     return configs
 
 
+def _real_cid_configs(
+    accounts: list[dict],
+    mapping_rows: list[dict],
+) -> list[dict]:
+    """仅从真实采集/人工确认映射构造 CID 配置，禁止生成占位值。"""
+    now = datetime.now(timezone.utc)
+    by_cid: dict[str, list[dict]] = {}
+    for row in mapping_rows:
+        by_cid.setdefault(str(row.get("cid", "")).strip(), []).append(row)
+    configs: list[dict] = []
+    seen: set[str] = set()
+    for account in accounts:
+        cid = str(account.get("cid", "")).strip()
+        if cid in seen:
+            continue
+        seen.add(cid)
+        matches = by_cid.get(cid, [])
+        if len(matches) != 1:
+            raise ValidationError(
+                f"CID {cid} 缺少唯一真实投放配置（匹配 {len(matches)} 条）"
+            )
+        row = matches[0]
+        values = {
+            "subject": str(row.get("company") or row.get("subject") or "").strip(),
+            "douyin_account": str(row.get("douyin_account") or "").strip(),
+            "ad_preset": str(row.get("ad_preset") or "").strip(),
+            "account_open_preset": str(
+                row.get("open_preset") or row.get("account_open_preset") or ""
+            ).strip(),
+        }
+        missing = [key for key, value in values.items() if not value]
+        if missing:
+            raise ValidationError(
+                f"CID {cid} 真实配置不完整: {', '.join(missing)}"
+            )
+        role = str(account.get("role", ""))
+        configs.append(
+            {
+                "cid": cid,
+                **values,
+                "delivery_type": ROLE_DELIVERY_TYPES.get(role, role),
+                "enabled": True,
+                "effective_from": (now - timedelta(days=1)).isoformat(),
+                "effective_to": None,
+            }
+        )
+    return configs
+
+
+def _validate_task_resources(resources: dict) -> None:
+    materials = list(resources.get("material_ids") or [])
+    titles = list(resources.get("title_packages") or [])
+    if not materials:
+        raise ValidationError("剧目未配置真实素材")
+    if len(titles) != 6 or len(set(titles)) != 6:
+        raise ValidationError("剧目必须配置 6 个不重复标题包")
+
+
+def _delivery_config_error(task: DramaTask, exc: Exception) -> ExecutionEvent:
+    return ExecutionEvent(
+        task_id=task.id,
+        event_type="DELIVERY_CONFIG",
+        message=f"真实投放配置不完整: {exc}",
+        level=EventLevel.ERROR,
+        context_json={"drama_name": task.drama_name},
+    )
+
+
 def _ledger_fields(spec: PlanSpec, ledger) -> dict:
     """从 StandardDeliveryService 内存台账提取最终台账字段。"""
     return {
@@ -343,13 +658,34 @@ def _account_event(task: DramaTask, accounts: list[dict]) -> ExecutionEvent:
     )
 
 
-def _account_error(task: DramaTask, links: dict[str, str]) -> ExecutionEvent:
+def _account_assignment_failure(
+    task: DramaTask,
+    links: dict[str, str],
+    status: str,
+    reason: str,
+    prior_events: list[ExecutionEvent],
+) -> ExecutionOutcome:
+    """保留账户写入失败语义，禁止队列把部分写误判为可安全重试。"""
+    return ExecutionOutcome(
+        status=STATUS_MANUAL_REVIEW,
+        failure_code=status,
+        retry_safe=False,
+        events=[*prior_events, _account_error(task, links, status, reason)],
+    )
+
+
+def _account_error(
+    task: DramaTask,
+    links: dict[str, str],
+    status: str,
+    reason: str,
+) -> ExecutionEvent:
     return ExecutionEvent(
         task_id=task.id,
         event_type="ACCOUNT_ALLOCATION",
-        message="无可用 IAA/IAP 账户块，任务转人工处理",
+        message=f"账户分配失败（{status}）：{reason}，任务转人工处理",
         level=EventLevel.ERROR,
-        context_json={"links": links},
+        context_json={"links": links, "failure_code": status},
     )
 
 
@@ -380,6 +716,8 @@ def _delivery_error(task: DramaTask, outcome) -> ExecutionEvent:
         context_json={
             "status": outcome.status,
             "external_task_id": outcome.external_task_id,
+            "failure_code": outcome.failure_code,
+            "retry_safe": outcome.retry_safe,
         },
     )
 

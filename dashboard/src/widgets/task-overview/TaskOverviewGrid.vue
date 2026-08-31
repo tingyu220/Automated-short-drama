@@ -110,11 +110,11 @@ const displayValue = (key: string): string | number => {
 <style scoped>
 .task-overview {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
   gap: 16px;
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 1180px) {
   .task-overview {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

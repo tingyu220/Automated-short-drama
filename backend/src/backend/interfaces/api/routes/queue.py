@@ -19,7 +19,7 @@ from backend.interfaces.api.schemas import QueueItemView
 
 router = APIRouter(tags=["queue"])
 
-_TERMINAL_STATES = frozenset({"COMPLETED", "CANCELLED"})
+_TERMINAL_STATES = frozenset({"COMPLETED", "CANCELLED", "DRY_RUN"})
 
 
 def get_db() -> Generator[Session, None, None]:

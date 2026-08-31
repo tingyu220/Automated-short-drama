@@ -30,6 +30,8 @@ class SqlAlchemyQueueRepository:
             lease_until=item.lease_until,
             attempt_count=item.attempt_count,
             next_run_at=item.next_run_at,
+            failure_code=item.failure_code,
+            retry_safe=item.retry_safe,
         )
         self._session.add(record)
         self._session.flush()
@@ -54,6 +56,8 @@ class SqlAlchemyQueueRepository:
         record.lease_until = item.lease_until
         record.attempt_count = item.attempt_count
         record.next_run_at = item.next_run_at
+        record.failure_code = item.failure_code
+        record.retry_safe = item.retry_safe
         self._session.flush()
         return self._to_domain(record)
 
@@ -239,6 +243,8 @@ class SqlAlchemyQueueRepository:
             lease_until=record.lease_until,
             attempt_count=record.attempt_count,
             next_run_at=record.next_run_at,
+            failure_code=record.failure_code,
+            retry_safe=record.retry_safe,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )

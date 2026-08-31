@@ -13,6 +13,7 @@ from backend.domain.errors.domain_error import (
     ExternalAdapterError,
 )
 from backend.domain.plans.plan_spec import PlanSpec
+from backend.domain.plans.delivery_form_spec import CidFormRow, DeliveryFormSpec
 from backend.domain.ports.adapters import DeliverySystemAdapter, DramaAsset
 from backend.platforms.delivery_system.delivery_system_adapter import (
     DeliverySystemAdapter as PlaywrightDeliverySystemAdapter,
@@ -21,9 +22,12 @@ from backend.platforms.delivery_system.delivery_system_adapter import (
 
 SELECTORS = {
     "base_url": "https://delivery.example.com",
+    "asset_page_url": "https://delivery.example.com/video/dramas",
+    "config_page_url": "https://delivery.example.com/autoTask/proContentConfig/index",
     "asset_search_input": "#asset-search-input",
     "asset_search_button": "#asset-search-button",
     "asset_create_button": "#asset-create-button",
+    "asset_drama_name_input": "#asset-drama-name-input",
     "asset_link_input": "#asset-link-input",
     "asset_save_button": "#asset-save-button",
     "album_id_field": "#album-id-field",
@@ -33,17 +37,32 @@ SELECTORS = {
     "config_create_button": "#config-create-button",
     "config_name_input": "#config-name-input",
     "config_main_drama": "#config-main-drama",
+    "config_ad_type": "#config-ad-type",
     "config_distributor": "#config-distributor",
     "config_link_input": "#config-link-input",
     "config_save_button": "#config-save-button",
     "plan_submit_button": "#plan-submit-button",
     "confirm_submit_button": "#confirm-submit-button",
     "plan_task_name": "#plan-task-name",
-    "plan_account_cid": "#plan-account-cid",
-    "plan_product": "#plan-product",
-    "plan_promotion_config": "#plan-promotion-config",
+    "plan_type": "#plan-type",
+    "plan_account_cid": "#plan-account-cid-{index}",
+    "plan_douyin_account": "#plan-douyin-account-{index}",
+    "plan_account_open_preset": "#plan-open-preset-{index}",
+    "plan_ad_preset": "#plan-ad-preset-{index}",
+    "plan_promotion_config": "#plan-promotion-config-{index}",
+    "plan_material": "#plan-material-{index}",
+    "plan_title_package": "#plan-title-package-{index}",
+    "plan_title_shuffle_button": "#plan-title-shuffle",
+    "plan_project_rule": "#plan-project-rule",
+    "plan_ad_rule": "#plan-ad-rule",
+    "plan_material_average": "#plan-material-average",
+    "plan_title_average": "#plan-title-average",
+    "plan_material_group_count": "#plan-material-group-count",
+    "plan_ad_limit": "#plan-ad-limit",
+    "plan_project_count": "#plan-project-count",
     "task_row": "#task-row",
     "task_status_cell": "#task-status-cell",
+    "task_id_cell": "#task-id-cell",
 }
 
 
@@ -58,17 +77,22 @@ class FakeLocator:
     element_count: int = 0
     text: str = ""
     rows: list[str] = field(default_factory=list)
+    rows_sequence: list[list[str]] = field(default_factory=list)
+    _evaluate_count: int = 0
 
     def fill(self, value: str, **kwargs: Any) -> None:
         self.calls.append(("fill", (value,), kwargs))
 
     def click(self, **kwargs: Any) -> None:
+        kwargs.pop("timeout", None)
         self.calls.append(("click", (), kwargs))
 
     def wait_for(self, **kwargs: Any) -> None:
+        kwargs.pop("timeout", None)
         self.calls.append(("wait_for", (), kwargs))
 
     def input_value(self, **kwargs: Any) -> str:
+        kwargs.pop("timeout", None)
         self.calls.append(("input_value", (), kwargs))
         return self.value
 
@@ -77,15 +101,42 @@ class FakeLocator:
         return self.element_count
 
     def text_content(self, **kwargs: Any) -> str:
+        kwargs.pop("timeout", None)
         self.calls.append(("text_content", (), kwargs))
         return self.text
 
     def evaluate_all(self, expression: str, arg: Any = None, **kwargs: Any) -> list[Any]:
         self.calls.append(("evaluate_all", (expression,), {"arg": arg, **kwargs}))
+        if self.rows_sequence:
+            idx = min(self._evaluate_count, len(self.rows_sequence) - 1)
+            self._evaluate_count += 1
+            return list(self.rows_sequence[idx])
         return list(self.rows)
 
     def press(self, key: str, **kwargs: Any) -> None:
         self.calls.append(("press", (key,), kwargs))
+
+    @property
+    def first(self) -> "FakeLocator":
+        return self
+
+    def filter(self, **kwargs: Any) -> "FakeLocator":
+        return self
+
+    def locator(self, selector: str) -> "FakeLocator":
+        return self.page.locator(selector)
+
+    def evaluate(self, expression: str, arg: Any = None, **kwargs: Any) -> Any:
+        self.calls.append(("evaluate", (expression,), {"arg": arg, **kwargs}))
+        return None
+
+    def is_visible(self, **kwargs: Any) -> bool:
+        self.calls.append(("is_visible", (), kwargs))
+        return False
+
+    def inner_text(self, **kwargs: Any) -> str:
+        self.calls.append(("inner_text", (), kwargs))
+        return self.text
 
 
 class FakePage:
@@ -94,9 +145,15 @@ class FakePage:
     def __init__(self) -> None:
         self.locators: dict[str, FakeLocator] = {}
         self.calls: list[tuple[str, tuple, dict]] = []
+        self.url: str = "https://delivery.example.com/page"
 
     def goto(self, url: str, **kwargs: Any) -> None:
+        kwargs.pop("wait_until", None)
+        kwargs.pop("timeout", None)
         self.calls.append(("goto", (url,), kwargs))
+
+    def wait_for_timeout(self, ms: int, **kwargs: Any) -> None:
+        self.calls.append(("wait_for_timeout", (ms,), kwargs))
 
     def locator(self, selector: str, **kwargs: Any) -> FakeLocator:
         self.calls.append(("locator", (selector,), kwargs))
@@ -128,6 +185,13 @@ class FakePage:
             selector, FakeLocator(page=self, selector=selector)
         ).rows = rows
 
+    def set_rows_sequence(self, selector: str, rows_list: list[list[str]]) -> None:
+        """预置 evaluate_all 连续调用返回不同行列表."""
+        loc = self.locators.setdefault(
+            selector, FakeLocator(page=self, selector=selector)
+        )
+        loc.rows_sequence = rows_list
+
 
 def make_adapter(page: FakePage | None = None, dry_run: bool = True):
     return PlaywrightDeliverySystemAdapter(
@@ -137,30 +201,41 @@ def make_adapter(page: FakePage | None = None, dry_run: bool = True):
     )
 
 
+def make_form() -> DeliveryFormSpec:
+    return DeliveryFormSpec(
+        drama_name="剧A",
+        task_name="番茄#端免剧A测试任务",
+        plan_type="端免",
+        cid_rows=(
+            CidFormRow("cid-1", "dy-1", "open-1", "ad-1", "iaa-番茄-剧A", "IAA"),
+            CidFormRow("cid-2", "dy-2", "open-2", "ad-2", "iaa-番茄-剧A", "IAA"),
+        ),
+        material_ids=("material-1", "material-2", "material-3"),
+        title_packages=tuple(f"title-{index}" for index in range(6)),
+        material_group_count=3,
+        ad_limit_per_project=1,
+        project_count=3,
+    )
+
+
 class TestDramaAsset:
     """剧目资源搜索/创建/复用验证."""
 
     def test_find_or_create_reuses_existing_asset(self):
         page = FakePage()
-        page.set_count(SELECTORS["delivery_drama_id_field"], 1)
-        page.set_value(SELECTORS["delivery_drama_id_field"], "dd-1")
-        page.set_count(SELECTORS["album_id_field"], 1)
-        page.set_value(SELECTORS["album_id_field"], "album-1")
+        page.set_rows(SELECTORS["config_row"], ["剧A\t番茄\t账号A"])
         adapter = make_adapter(page=page, dry_run=False)
 
         asset = adapter.find_or_create_drama_asset(
             "剧A", "https://delivery.example.com/iaa/1"
         )
 
-        assert asset == DramaAsset(
-            delivery_drama_id="dd-1",
-            drama_name="剧A",
-            link="https://delivery.example.com/iaa/1",
-            album_id="album-1",
-        )
+        assert asset.drama_name == "剧A"
+        assert asset.link == "https://delivery.example.com/iaa/1"
         assert SELECTORS["asset_create_button"] not in page.locators
         assert page.locators[SELECTORS["asset_search_input"]].calls == [
-            ("fill", ("剧A",), {})
+            ("wait_for", (), {"state": "visible"}),
+            ("fill", ("剧A",), {}),
         ]
         assert page.locators[SELECTORS["asset_search_button"]].calls == [
             ("click", (), {})
@@ -168,7 +243,7 @@ class TestDramaAsset:
 
     def test_find_or_create_creates_missing_asset(self):
         page = FakePage()
-        page.set_value(SELECTORS["delivery_drama_id_field"], "dd-2")
+        page.set_rows(SELECTORS["config_row"], [])
         page.set_value(SELECTORS["album_id_field"], "album-2")
         adapter = make_adapter(page=page, dry_run=False)
 
@@ -176,14 +251,16 @@ class TestDramaAsset:
             "剧B", "https://delivery.example.com/iaa/2"
         )
 
-        assert asset == DramaAsset(
-            delivery_drama_id="dd-2",
-            drama_name="剧B",
-            link="https://delivery.example.com/iaa/2",
-            album_id="album-2",
-        )
+        assert asset.delivery_drama_id == "album-2"
+        assert asset.drama_name == "剧B"
+        assert asset.link == "https://delivery.example.com/iaa/2"
+        assert asset.album_id == "album-2"
         assert page.locators[SELECTORS["asset_create_button"]].calls == [
             ("click", (), {})
+        ]
+        assert page.locators[SELECTORS["asset_drama_name_input"]].calls == [
+            ("wait_for", (), {"state": "visible"}),
+            ("fill", ("剧B",), {}),
         ]
         assert page.locators[SELECTORS["asset_link_input"]].calls == [
             ("fill", ("https://delivery.example.com/iaa/2",), {})
@@ -194,7 +271,7 @@ class TestDramaAsset:
 
     def test_create_uncertain_raises_result_uncertain(self):
         page = FakePage()
-        page.set_value(SELECTORS["delivery_drama_id_field"], "")
+        page.set_rows(SELECTORS["config_row"], [])
         page.set_value(SELECTORS["album_id_field"], "")
         adapter = make_adapter(page=page, dry_run=False)
 
@@ -205,12 +282,20 @@ class TestDramaAsset:
 
 
 class TestPromotionConfig:
-    """推广内容配置缺失项创建与主剧校验验证."""
+    """推广内容配置缺失项创建与表格验证."""
 
     def test_create_missing_fills_fields_and_returns_result(self):
         page = FakePage()
-        page.set_rows(SELECTORS["task_row"], [])
-        page.set_text(SELECTORS["task_status_cell"], "OK")
+        page.set_rows_sequence(
+            SELECTORS["config_row"],
+            [
+                [],
+                [],
+                [],
+                ["iaa-番茄-剧A\t冰封末世\t番茄\t付费\t微智造\tlink\tB组\t删除复制"],
+            ],
+        )
+        page.set_count(".el-select-dropdown__item:visible", 1)
         adapter = make_adapter(page=page, dry_run=False)
 
         result = adapter.ensure_promotion_config(
@@ -221,25 +306,40 @@ class TestPromotionConfig:
             "TOMATO",
         )
 
-        assert result == "OK"
+        assert result == "iaa-番茄-剧A"
         assert page.locators[SELECTORS["config_search_input"]].calls == [
-            ("fill", ("IAA-TOMATO-剧A",), {}),
+            ("wait_for", (), {"state": "visible"}),
+            ("fill", ("iaa-番茄-剧A",), {}),
             ("press", ("Enter",), {}),
-        ]
-        assert page.locators[SELECTORS["config_row"]].calls == [
-            ("evaluate_all", ("(rows) => rows.map(row => row.innerText.trim())",), {"arg": None})
+            ("fill", ("iaa-番茄-剧A",), {}),
+            ("press", ("Enter",), {}),
+            ("fill", ("iaa-番茄-剧A",), {}),
+            ("press", ("Enter",), {}),
+            ("wait_for", (), {"state": "visible"}),
+            ("fill", ("iaa-番茄-剧A",), {}),
+            ("press", ("Enter",), {}),
         ]
         assert page.locators[SELECTORS["config_create_button"]].calls == [
             ("click", (), {})
         ]
         assert page.locators[SELECTORS["config_name_input"]].calls == [
-            ("fill", ("IAA-TOMATO-剧A",), {})
+            ("wait_for", (), {"state": "visible"}),
+            ("fill", ("iaa-番茄-剧A",), {}),
         ]
-        assert page.locators[SELECTORS["config_main_drama"]].calls == [
-            ("fill", ("剧A",), {})
-        ]
-        assert page.locators[SELECTORS["config_distributor"]].calls == [
-            ("fill", ("微智造",), {})
+        # _fill_select_input uses JS evaluate to click el-select, then selects option
+        assert len(page.locators[SELECTORS["config_main_drama"]].calls) == 2
+        assert page.locators[SELECTORS["config_main_drama"]].calls[0][0] == "evaluate"
+        assert len(page.locators[SELECTORS["config_ad_type"]].calls) == 2
+        assert page.locators[SELECTORS["config_ad_type"]].calls[0][0] == "evaluate"
+        assert len(page.locators[SELECTORS["config_distributor"]].calls) == 2
+        assert page.locators[SELECTORS["config_distributor"]].calls[0][0] == "evaluate"
+        assert page.locators[".el-select-dropdown__item:visible"].calls == [
+            ("count", (), {}),
+            ("click", (), {}),
+            ("count", (), {}),
+            ("click", (), {}),
+            ("count", (), {}),
+            ("click", (), {}),
         ]
         assert page.locators[SELECTORS["config_link_input"]].calls == [
             ("fill", ("https://delivery.example.com/iaa/1",), {})
@@ -250,33 +350,19 @@ class TestPromotionConfig:
 
     def test_create_missing_reuses_existing_config(self):
         page = FakePage()
-        page.set_rows(SELECTORS["config_row"], ["IAA-TOMATO-剧A"])
+        page.set_rows(SELECTORS["config_row"], ["iaa-番茄-剧A"])
         adapter = make_adapter(page=page, dry_run=False)
 
         result = adapter.ensure_promotion_config(
             "dd-1", "IAA", "link", "剧A", "TOMATO"
         )
 
-        assert result == "IAA-TOMATO-剧A"
+        assert result == "iaa-番茄-剧A"
         assert SELECTORS["config_create_button"] not in page.locators
-
-    def test_create_missing_raises_drama_mismatch(self):
-        page = FakePage()
-        page.set_rows(SELECTORS["config_row"], [])
-        page.set_text(SELECTORS["task_status_cell"], "DRAMA_MISMATCH: 链接与主剧不一致")
-        adapter = make_adapter(page=page, dry_run=False)
-
-        with pytest.raises(ExternalAdapterError) as exc:
-            adapter.ensure_promotion_config(
-                "dd-1", "IAA", "link", "剧A", "TOMATO"
-            )
-
-        assert exc.value.code == "PROMOTION_LINK_DRAMA_MISMATCH"
 
     def test_create_missing_empty_result_raises_result_uncertain(self):
         page = FakePage()
         page.set_rows(SELECTORS["config_row"], [])
-        page.set_text(SELECTORS["task_status_cell"], "")
         adapter = make_adapter(page=page, dry_run=False)
 
         with pytest.raises(ExternalAdapterError) as exc:
@@ -294,14 +380,7 @@ class TestPlanSubmit:
         page = FakePage()
         page.set_text(SELECTORS["task_row"], "task-20260806-001")
         adapter = make_adapter(page=page, dry_run=False)
-        spec = PlanSpec(
-            drama_name="剧A",
-            platform="TOMATO",
-            task_name="番茄#端免剧A测试任务",
-            link_set={"IAA": "https://delivery.example.com/iaa/1"},
-            account_cids=["cid-1", "cid-2"],
-            product_id="prod-1",
-        )
+        spec = make_form()
 
         task_id = adapter.submit_plan(spec)
 
@@ -309,14 +388,17 @@ class TestPlanSubmit:
         assert page.locators[SELECTORS["plan_task_name"]].calls == [
             ("fill", ("番茄#端免剧A测试任务",), {})
         ]
-        assert page.locators[SELECTORS["plan_account_cid"]].calls == [
-            ("fill", ("cid-1",), {})
+        for index, cid in enumerate(("cid-1", "cid-2")):
+            selector = SELECTORS["plan_account_cid"].format(index=index)
+            assert page.locators[selector].calls == [("fill", (cid,), {})]
+        assert page.locators[SELECTORS["plan_material"].format(index=2)].calls == [
+            ("fill", ("material-3",), {})
         ]
-        assert page.locators[SELECTORS["plan_product"]].calls == [
-            ("fill", ("prod-1",), {})
+        assert page.locators[SELECTORS["plan_title_package"].format(index=5)].calls == [
+            ("fill", ("title-5",), {})
         ]
-        assert page.locators[SELECTORS["plan_promotion_config"]].calls == [
-            ("fill", ("https://delivery.example.com/iaa/1",), {})
+        assert page.locators[SELECTORS["plan_title_shuffle_button"]].calls == [
+            ("click", (), {})
         ]
         assert page.locators[SELECTORS["plan_submit_button"]].calls == [
             ("click", (), {})
@@ -329,14 +411,7 @@ class TestPlanSubmit:
         page = FakePage()
         page.set_text(SELECTORS["task_row"], "")
         adapter = make_adapter(page=page, dry_run=False)
-        spec = PlanSpec(
-            drama_name="剧A",
-            platform="TOMATO",
-            task_name="番茄#端免剧A测试任务",
-            link_set={"IAA": "link"},
-            account_cids=["cid-1"],
-            product_id="prod-1",
-        )
+        spec = make_form()
 
         with pytest.raises(ExternalAdapterError) as exc:
             adapter.submit_plan(spec)
@@ -345,18 +420,11 @@ class TestPlanSubmit:
 
     def test_submit_missing_selector_raises_configuration_error(self):
         selectors = dict(SELECTORS)
-        del selectors["plan_product"]
+        del selectors["plan_title_package"]
         adapter = PlaywrightDeliverySystemAdapter(
             selectors=selectors, page=FakePage(), dry_run=False
         )
-        spec = PlanSpec(
-            drama_name="剧A",
-            platform="TOMATO",
-            task_name="番茄#端免剧A测试任务",
-            link_set={"IAA": "link"},
-            account_cids=["cid-1"],
-            product_id="prod-1",
-        )
+        spec = make_form()
 
         with pytest.raises(ConfigurationError) as exc:
             adapter.submit_plan(spec)
@@ -366,6 +434,26 @@ class TestPlanSubmit:
 
 class TestTaskStatus:
     """任务状态轮询读取与归一化验证."""
+
+    def test_find_task_by_idempotency_key_returns_task_id(self):
+        page = FakePage()
+        selector = (
+            f"{SELECTORS['task_row']}:has-text('唯一任务名') "
+            f"{SELECTORS['task_id_cell']}"
+        )
+        page.set_text(selector, "task-001")
+        adapter = PlaywrightDeliverySystemAdapter(
+            selectors=dict(SELECTORS), page=page, dry_run=False
+        )
+
+        assert adapter.find_task_by_idempotency_key("唯一任务名") == "task-001"
+
+    def test_find_task_by_idempotency_key_returns_none_when_absent(self):
+        adapter = PlaywrightDeliverySystemAdapter(
+            selectors=dict(SELECTORS), page=FakePage(), dry_run=False
+        )
+
+        assert adapter.find_task_by_idempotency_key("不存在") is None
 
     def _status_selector(self, external_task_id: str) -> str:
         return (
@@ -423,30 +511,18 @@ class TestDryRun:
 
     def test_non_dry_run_does_not_record_calls(self):
         page = FakePage()
-        page.set_rows(SELECTORS["config_row"], [])
-        page.set_text(SELECTORS["task_status_cell"], "OK")
+        page.set_rows(SELECTORS["config_row"], ["iaa-番茄-剧A"])
         page.set_text(SELECTORS["task_row"], "task-1")
         page.set_text(
             f"{SELECTORS['task_row']}:has-text('task-1') "
             f"{SELECTORS['task_status_cell']}",
             "COMPLETED",
         )
-        page.set_value(SELECTORS["delivery_drama_id_field"], "dd-1")
-        page.set_value(SELECTORS["album_id_field"], "album-1")
         adapter = make_adapter(page=page, dry_run=False)
 
         adapter.find_or_create_drama_asset("剧A", "link")
         adapter.ensure_promotion_config("dd-1", "IAA", "link", "剧A", "TOMATO")
-        adapter.submit_plan(
-            PlanSpec(
-                drama_name="剧A",
-                platform="TOMATO",
-                task_name="task-name",
-                link_set={"IAA": "link"},
-                account_cids=["cid-1"],
-                product_id="prod-1",
-            )
-        )
+        adapter.submit_plan(make_form())
         adapter.poll_task_status("task-1")
 
         assert adapter.recorded_calls == []

@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.interfaces.api.main import create_app
+from backend.interfaces.api.routes import accounts as accounts_route
+from backend.domain.rules.account_block import AccountRow
 
 
 class TestAccountsApi:
@@ -28,6 +30,22 @@ class TestAccountsApi:
             "is_test",
             "drama_name",
         }
+
+    def test_overview_uses_configured_real_account_source(self, monkeypatch):
+        rows = [AccountRow(2, "真实账户", "real-cid", "B1", True, False, "")]
+        monkeypatch.setattr(
+            accounts_route,
+            "_account_source",
+            lambda: ("real", rows),
+        )
+        app = create_app(dist_dir=None)
+
+        with TestClient(app) as test_client:
+            response = test_client.get("/api/accounts/overview")
+
+        assert response.status_code == 200
+        assert response.json()["sync_status"] == "real"
+        assert response.json()["accounts"][0]["cid"] == "real-cid"
 
     def test_allocate_preview_iaa_returns_first_available_block(self):
         """IAA 分配预览返回首个完整块，但不写入账户表。"""

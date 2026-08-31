@@ -1,6 +1,10 @@
 """番茄链接/模板提取服务单元测试：fake tomato + price rules."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+import pytest
+
 from backend.application.services.tomato_extraction_service import (
     IapScanResult,
     extract_iaa,
@@ -8,6 +12,8 @@ from backend.application.services.tomato_extraction_service import (
 )
 from backend.domain.ports.adapters import PromotionLink, TemplateInfo
 from backend.domain.rules.template_price_rule import TemplatePriceRule
+
+TARGET_TIME = datetime(2026, 8, 10, 6, 30, tzinfo=timezone.utc)
 
 
 def _rule(
@@ -49,9 +55,11 @@ class FakeTomatoAdapter:
     def extract_iaa_link(
         self,
         drama_name: str,
+        available_time: datetime,
         episode_count: int,
         selected_episode: int,
     ) -> PromotionLink:
+        del available_time
         del episode_count
         url = f"mock://iaa/{drama_name}?ep={selected_episode}"
         return PromotionLink(
@@ -66,15 +74,34 @@ class FakeTomatoAdapter:
             link_status="OK",
         )
 
-    def scan_iap_templates(self, drama_name: str) -> list[TemplateInfo]:
+    def scan_iap_templates(
+        self, drama_name: str, available_time: datetime
+    ) -> list[TemplateInfo]:
         del drama_name
+        del available_time
         return list(self.templates)
 
     def generate_iap_link(
         self,
         drama_name: str,
+        available_time: datetime,
         template: TemplateInfo,
+        **kwargs,
     ) -> PromotionLink:
+        del available_time
+        del kwargs
+        if template.template_id.startswith("synthetic_"):
+            return PromotionLink(
+                drama_name=drama_name,
+                link_type="IAP",
+                promotion_url="",
+                source_platform="TOMATO",
+                source_entry="PAID",
+                acquisition_method="FAKE",
+                source_column="K",
+                url_length=0,
+                link_status="NOT_FOUND",
+            )
         url = f"mock://iap/{drama_name}?tpl={template.template_id}"
         return PromotionLink(
             drama_name=drama_name,
@@ -101,19 +128,21 @@ class TestExtractIaa:
     """extract_iaa 选集边界测试."""
 
     def test_50_episodes_selects_episode_1(self) -> None:
-        link = extract_iaa("剧A", 50, FakeTomatoAdapter())
+        link = extract_iaa("剧A", TARGET_TIME, 50, FakeTomatoAdapter())
 
         assert link.link_type == "IAA"
         assert link.promotion_url.endswith("ep=1")
 
     def test_51_episodes_selects_episode_2(self) -> None:
-        link = extract_iaa("剧A", 51, FakeTomatoAdapter())
+        link = extract_iaa("剧A", TARGET_TIME, 51, FakeTomatoAdapter())
 
         assert link.link_type == "IAA"
         assert link.promotion_url.endswith("ep=2")
 
     def test_custom_threshold(self) -> None:
-        link = extract_iaa("剧A", 50, FakeTomatoAdapter(), episode_threshold=49)
+        link = extract_iaa(
+            "剧A", TARGET_TIME, 50, FakeTomatoAdapter(), episode_threshold=49
+        )
 
         assert link.promotion_url.endswith("ep=2")
 
@@ -130,7 +159,7 @@ class TestScanIap:
             ]
         )
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "ONLY_9_9_AVAILABLE"
         assert result.iap_9_9_link is not None
@@ -142,12 +171,12 @@ class TestScanIap:
     def test_only_2_9_available(self) -> None:
         tomato = FakeTomatoAdapter([_template("tpl-2-9", 2.9)])
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "ONLY_2_9_AVAILABLE"
         assert result.iap_2_9_link is not None
         assert result.iap_2_9_link.promotion_url.endswith("tpl-2-9")
-        assert result.iap_9_9_link is None
+        assert not result.iap_9_9_link or not result.iap_9_9_link.promotion_url
         assert [template.template_id for template in result.matched_templates] == [
             "tpl-2-9"
         ]
@@ -155,10 +184,10 @@ class TestScanIap:
     def test_only_9_9_available(self) -> None:
         tomato = FakeTomatoAdapter([_template("tpl-9-9", 9.9)])
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "ONLY_9_9_AVAILABLE"
-        assert result.iap_2_9_link is None
+        assert not result.iap_2_9_link or not result.iap_2_9_link.promotion_url
         assert result.iap_9_9_link is not None
         assert result.iap_9_9_link.promotion_url.endswith("tpl-9-9")
         assert [template.template_id for template in result.matched_templates] == [
@@ -168,11 +197,11 @@ class TestScanIap:
     def test_no_matching_template(self) -> None:
         tomato = FakeTomatoAdapter([_template("tpl-out", 25.0)])
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "NO_MATCHING_TEMPLATE"
-        assert result.iap_2_9_link is None
-        assert result.iap_9_9_link is None
+        assert not result.iap_2_9_link or not result.iap_2_9_link.promotion_url
+        assert not result.iap_9_9_link or not result.iap_9_9_link.promotion_url
         assert result.matched_templates == []
 
     def test_both_available(self) -> None:
@@ -180,7 +209,7 @@ class TestScanIap:
             [_template("tpl-2-9", 2.9), _template("tpl-9-9", 9.9)]
         )
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "BOTH_AVAILABLE"
         assert result.iap_2_9_link is not None
@@ -199,7 +228,7 @@ class TestScanIap:
             ]
         )
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.business_result == "BOTH_AVAILABLE"
         assert [template.template_id for template in result.matched_templates] == [
@@ -215,7 +244,7 @@ class TestScanIap:
             ]
         )
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert result.iap_9_9_link is not None
         assert result.iap_9_9_link.promotion_url.endswith("tpl-early")
@@ -225,16 +254,136 @@ class TestScanIap:
         disabled = _rule(2.9, 2.6, 5.0, key="disabled")
         disabled.enabled = False
 
-        result = scan_iap("剧A", tomato, [disabled])
+        result = scan_iap("剧A", TARGET_TIME, tomato, [disabled])
 
         assert result.business_result == "NO_MATCHING_TEMPLATE"
-        assert result.iap_2_9_link is None
+        assert not result.iap_2_9_link or not result.iap_2_9_link.promotion_url
 
     def test_result_contains_iaa_link(self) -> None:
         tomato = FakeTomatoAdapter([_template("tpl-9-9", 9.9)])
 
-        result = scan_iap("剧A", tomato, _both_rules())
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
 
         assert isinstance(result, IapScanResult)
         assert result.iaa_link.link_type == "IAA"
         assert result.iaa_link.source_platform == "TOMATO"
+
+    def test_out_of_range_template_does_not_fill_missing_9_9(self) -> None:
+        """2.9 命中时也不能用范围外模板冒充 9.9。"""
+        tomato = FakeTomatoAdapter(
+            [
+                _template("tpl-2-9", 4.7),
+                _template("tpl-other", 6.58),
+                _template("tpl-high", 35.25),
+            ]
+        )
+
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
+
+        assert result.business_result == "ONLY_2_9_AVAILABLE"
+        assert result.iap_2_9_link is not None
+        assert result.iap_9_9_link is None
+
+    def test_partial_fallback_does_not_assign_same_range(self) -> None:
+        """剩余模板价格在已匹配档位范围内时不补位。"""
+        tomato = FakeTomatoAdapter(
+            [_template("tpl-9-9-a", 9.9), _template("tpl-9-9-b", 9.9)]
+        )
+
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
+
+        assert result.business_result == "ONLY_9_9_AVAILABLE"
+        assert not result.iap_2_9_link or not result.iap_2_9_link.promotion_url
+
+    def test_iaa_failure_blocks_link_preparation(self) -> None:
+        """IAA 是必需链接，失败时不能只凭 IAP 继续搭建。"""
+
+        class IaaFailingTomato(FakeTomatoAdapter):
+            def extract_iaa_link(
+                self, drama_name, available_time, episode_count, selected_episode
+            ):
+                raise TimeoutError("IAA 提取超时")
+
+        tomato = IaaFailingTomato(
+            [_template("tpl-2-9", 2.9), _template("tpl-9-9", 9.9)]
+        )
+
+        with pytest.raises(TimeoutError, match="IAA 提取超时"):
+            scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
+
+    def test_iap_generation_failure_keeps_iaa_and_other_iap_result(self) -> None:
+        """某个 IAP 档位失败不能阻断可用 IAA 或另一档位。"""
+
+        class PartiallyFailingTomato(FakeTomatoAdapter):
+            def generate_iap_link(self, drama_name, available_time, template, **kwargs):
+                if template.template_id == "tpl-9-9":
+                    raise TimeoutError("9.9 模板生成超时")
+                return super().generate_iap_link(
+                    drama_name, available_time, template, **kwargs
+                )
+
+        tomato = PartiallyFailingTomato(
+            [_template("tpl-2-9", 2.9), _template("tpl-9-9", 9.9)]
+        )
+
+        result = scan_iap("剧A", TARGET_TIME, tomato, _both_rules())
+
+        assert result.iaa_link.promotion_url == "mock://iaa/剧A?ep=1"
+        assert result.iap_2_9_link is not None
+        assert result.iap_9_9_link is None
+        assert result.iap_failures == [
+            {
+                "link_type": "9.9",
+                "code": "TimeoutError",
+                "message": "9.9 模板生成超时",
+            }
+        ]
+
+    def test_available_time_is_passed_to_every_platform_operation(self) -> None:
+        """防止 IAA/IAP 任一阶段丢失同名剧匹配所需时间。"""
+        target_time = datetime(2026, 8, 10, 6, 30, tzinfo=timezone.utc)
+
+        class RecordingTomato(FakeTomatoAdapter):
+            def __init__(self) -> None:
+                super().__init__([_template("tpl-9-9", 9.9)])
+                self.calls: list[tuple] = []
+
+            def scan_iap_templates(self, drama_name, available_time):
+                self.calls.append(("scan", drama_name, available_time))
+                return list(self.templates)
+
+            def generate_iap_link(self, drama_name, available_time, template, **kwargs):
+                self.calls.append(
+                    ("generate", drama_name, available_time, template.template_id)
+                )
+                return super().generate_iap_link(drama_name, available_time, template, **kwargs)
+
+            def extract_iaa_link(
+                self,
+                drama_name,
+                available_time,
+                episode_count,
+                selected_episode,
+            ):
+                self.calls.append(
+                    (
+                        "iaa",
+                        drama_name,
+                        available_time,
+                        episode_count,
+                        selected_episode,
+                    )
+                )
+                return super().extract_iaa_link(
+                    drama_name, available_time, episode_count, selected_episode
+                )
+
+        tomato = RecordingTomato()
+
+        scan_iap("剧A", target_time, tomato, _both_rules())
+
+        assert tomato.calls == [
+            ("iaa", "剧A", target_time, 1, 1),
+            ("scan", "剧A", target_time),
+            ("generate", "剧A", target_time, "tpl-9-9"),
+        ]

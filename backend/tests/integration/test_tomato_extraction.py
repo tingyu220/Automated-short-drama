@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -46,7 +47,12 @@ class TestTomatoExtractionIntegration:
                 session.commit()
 
                 rules = price_repo.list_template_price_rules()
-                result = scan_iap("剧A", MockTomatoAdapter(), rules)
+                result = scan_iap(
+                    "剧A",
+                    datetime(2026, 8, 10, 6, 30, tzinfo=timezone.utc),
+                    MockTomatoAdapter(),
+                    rules,
+                )
 
                 assert result.business_result == "BOTH_AVAILABLE"
                 assert result.iaa_link.link_type == "IAA"

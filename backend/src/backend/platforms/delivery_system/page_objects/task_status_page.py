@@ -36,3 +36,13 @@ class TaskStatusPage:
         if "失败" in raw or "FAILED" in upper:
             return "FAILED"
         return "OTHER"
+
+    def find_by_task_name(self, task_name: str) -> str | None:
+        """按唯一任务名查找外部任务 ID；不存在返回 None。"""
+        selector = (
+            f"{self._selectors['task_row']}:has-text('{task_name}') "
+            f"{self._selectors['task_id_cell']}"
+        )
+        value = self._page.locator(selector).text_content()
+        task_id = (value or "").strip()
+        return task_id or None
