@@ -37,6 +37,7 @@ _PLATFORM_DOMAINS: dict[str, str] = {
     "tomato": "changdupingtai.com",
     "delivery": "tjhaozew.top",
     "ocean": "oceanengine.com",
+    "youxuan": "youxuan2.cn",
 }
 _SAME_SITE_MAP: dict[int, str | None] = {
     -1: None,

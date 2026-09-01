@@ -121,18 +121,20 @@ class NetworkProvider:
                     candidates.append(c)
                 diag["ambiguous_count"] = len(result.ambiguous_candidates)
             else:
-                # NOT_FOUND 不加入 missing，因为不确定是否应该存在
+                missing[link_type] = "NOT_FOUND"
                 diag["reason"] = result.reason or "no candidates"
 
             per_type_diag[link_type] = diag
 
-        # 确定整体状态
+        # 确定整体状态：全部匹配才 COMPLETE
         if not all_assets:
             status = AcquisitionStatus.NOT_FOUND
+        elif len(matched_types) == len(expected_types):
+            status = AcquisitionStatus.COMPLETE
         elif missing:
             status = AcquisitionStatus.PARTIAL
         elif matched_types:
-            status = AcquisitionStatus.COMPLETE
+            status = AcquisitionStatus.PARTIAL
         else:
             status = AcquisitionStatus.NOT_FOUND
 
@@ -147,7 +149,7 @@ class NetworkProvider:
 
         return AcquisitionResult(
             status=status,
-            expected_types=matched_types + list(missing.keys()),
+            expected_types=list(expected_types),
             candidates=candidates,
             selected=selected,
             missing=missing,
@@ -199,7 +201,7 @@ def _to_asset(
         id=str(uuid.uuid4()),
         task_id=task.id,
         source_platform=task.platform,
-        drama_name=parsed.drama_name or task.drama_name,
+        drama_name=parsed.drama_name,
         link_type=link_type,
         promotion_url=parsed.promotion_url,
         external_drama_id=parsed.external_drama_id,

@@ -124,6 +124,7 @@ def build_link_readiness_executor(
     *,
     use_real_adapters: bool = False,
     on_poll_wait=None,
+    page=None,
 ) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
     """组装当前生产目标：只执行到链接提取或推广内容就绪。"""
     del settings, on_poll_wait
@@ -132,6 +133,17 @@ def build_link_readiness_executor(
     price_rules = SqlAlchemyPriceRuleRepository(
         session
     ).list_template_price_rules()
+    from backend.bootstrap.native_link_acquisition import (
+        build_native_link_acquisition,
+    )
+
+    link_acquisition = build_native_link_acquisition(
+        tomato=bundle.tomato,
+        price_rules=price_rules,
+        page=page if use_real_adapters else None,
+        promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
+        allow_legacy=not use_real_adapters,
+    )
     preparation = TaskPreparationService(
         bundle.feishu,
         bundle.tomato,
@@ -140,6 +152,7 @@ def build_link_readiness_executor(
         price_rules=price_rules,
         youxuan=bundle.youxuan,
         promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
+        link_acquisition=link_acquisition,
     )
     readiness = LinkReadinessService(
         preparation,
@@ -233,6 +246,7 @@ def build_worker_executor(
     poll_interval_seconds: int | None = None,
     on_poll_wait=None,
     delivery_config=None,
+    page=None,
 ) -> Callable[[DramaTask, QueueItem], ExecutionOutcome]:
     """组装 Worker 真实编排执行器；account_rows 仅用于测试注入。"""
     price_rules = SqlAlchemyPriceRuleRepository(session).list_template_price_rules()
@@ -253,6 +267,17 @@ def build_worker_executor(
         real_config = DeliveryConfigSnapshotService(
             settings.data_dir / "extracted"
         )
+    from backend.bootstrap.native_link_acquisition import (
+        build_native_link_acquisition,
+    )
+
+    link_acquisition = build_native_link_acquisition(
+        tomato=bundle.tomato,
+        price_rules=price_rules,
+        page=page if use_real_adapters else None,
+        promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
+        allow_legacy=not use_real_adapters,
+    )
     preparation = TaskPreparationService(
         bundle.feishu,
         bundle.tomato,
@@ -261,6 +286,7 @@ def build_worker_executor(
         price_rules=price_rules,
         youxuan=bundle.youxuan,
         promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
+        link_acquisition=link_acquisition,
     )
     # 安全默认 False；Mock 验收测试需显式传 True 模拟完整提交链路（与 CLI Mock 模式一致）。
     delivery = StandardDeliveryService(

@@ -192,6 +192,7 @@ class TomatoAdapter(TomatoAdapter):
         if self._dry_run:
             return []
         existing_templates = self._search_existing_iap(drama_name)
+        print(f"[DEBUG scan_iap_templates] drama={drama_name} existing_templates={len(existing_templates)} prices={[t.price for t in existing_templates]}", flush=True)
         if existing_templates:
             has_2_9 = any(
                 self._price_in_target_range(t.price, 2.9)
@@ -201,6 +202,7 @@ class TomatoAdapter(TomatoAdapter):
                 self._price_in_target_range(t.price, 9.9)
                 for t in existing_templates
             )
+            print(f"[DEBUG scan_iap_templates] has_2_9={has_2_9} has_9_9={has_9_9}", flush=True)
             if has_2_9 and has_9_9:
                 logger.info(
                     "IAP 链接已从推广链列表获取到2.9和9.9两档，跳过模板扫描 drama=%s",
@@ -210,6 +212,7 @@ class TomatoAdapter(TomatoAdapter):
         try:
             self._ensure_context("PAID")
         except Exception as exc:
+            print(f"[DEBUG scan_iap_templates] PAID context failed: {exc}", flush=True)
             logger.warning(
                 "PAID 入口上下文切换失败，回退到推广链列表结果 drama=%s: %s",
                 drama_name, exc,
@@ -222,10 +225,13 @@ class TomatoAdapter(TomatoAdapter):
         try:
             templates = paid_entry.scan_templates(drama_name)
         except Exception as exc:
+            print(f"[DEBUG scan_iap_templates] scan_templates failed: {exc}", flush=True)
             if not _should_reuse_existing(exc, "TOMATO_TEMPLATE_OPTIONS_EMPTY"):
                 raise
             return existing_templates
+        print(f"[DEBUG scan_iap_templates] paid_entry templates={len(templates)} prices={[t.price for t in templates]}", flush=True)
         if templates and all(t.price == 0.0 for t in templates):
+            print(f"[DEBUG scan_iap_templates] all prices 0.0, falling back to existing", flush=True)
             logger.info(
                 "IAP 模板扫描返回价格均为0，回退到推广链列表结果 drama=%s",
                 drama_name,
@@ -282,7 +288,9 @@ class TomatoAdapter(TomatoAdapter):
                     "all_prices": [p for p, _, _ in all_links],
                     "all_identities": [i for _, _, i in all_links],
                 })
-                if len(iap_links) > len(best_iap):
+                if len(iap_links) > len(best_iap) or (
+                    len(best_iap) == 0 and len(all_links) > len(best_all)
+                ):
                     best_iap = iap_links
                     best_all = all_links
                     best_type = type_label
@@ -292,7 +300,7 @@ class TomatoAdapter(TomatoAdapter):
                     "error": f"{type(exc).__name__}: {str(exc)[:100]}",
                 })
 
-        self._list_iap_cache = best_iap
+        self._list_iap_cache = best_all
         diag["best_search_type"] = best_type
         diag["total_rows"] = len(best_all)
         diag["iap_count"] = len(best_iap)
@@ -313,6 +321,9 @@ class TomatoAdapter(TomatoAdapter):
                     page_order=index,
                 )
             )
+        print(f"[DEBUG _search_existing_iap] drama={drama_name} best_type={best_type} total_rows={len(best_all)} iap_count={len(best_iap)} iap_prices={[p for p, _, _ in best_iap]} iap_identities={[i for _, _, i in best_iap]}", flush=True)
+        for idx, (p, link, ident) in enumerate(best_iap):
+            print(f"[DEBUG _search_existing_iap]   iap[{idx}] price={p} identity={ident[:50]} link_preview={link[:60]}", flush=True)
         logger.info(
             "推广链列表搜索完成 drama=%s best_type=%s total=%d iap=%d prices=%s",
             drama_name,
@@ -341,6 +352,12 @@ class TomatoAdapter(TomatoAdapter):
                 identity in link_identity or link_identity in identity
             ):
                 return link
+        if search_price == 0.0:
+            for price, link, link_identity in self._list_iap_cache:
+                if link in self._claimed_iap_urls:
+                    continue
+                if link:
+                    return link
         return None
 
     @staticmethod

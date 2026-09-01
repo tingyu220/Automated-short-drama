@@ -107,10 +107,13 @@ def scan_iap(
         [r.target_price for r in enabled_rules],
     )
 
+    print(f"[DEBUG scan_iap] drama={drama_name} all_templates={len(templates)} template_prices={[t.price for t in templates]}", flush=True)
+    print(f"[DEBUG scan_iap] enabled_rules={len(enabled_rules)} rule_targets={[r.target_price for r in enabled_rules]} rule_ranges=[(r.min_price, r.max_price) for r in enabled_rules]", flush=True)
     in_range_2_9 = _in_range_templates(templates, enabled_rules, _IAP_TARGET_2_9)
     in_range_9_9 = _in_range_templates(templates, enabled_rules, _IAP_TARGET_9_9)
     best_2_9 = _pick_best(in_range_2_9, _IAP_TARGET_2_9)
     best_9_9 = _pick_best(in_range_9_9, _IAP_TARGET_9_9)
+    print(f"[DEBUG scan_iap] in_range_2_9={len(in_range_2_9)} in_range_9_9={len(in_range_9_9)} best_2_9={best_2_9.price if best_2_9 else None} best_9_9={best_9_9.price if best_9_9 else None}", flush=True)
     logger.info(
         "IAP 模板匹配 drama=%s in_range_2_9=%d in_range_9_9=%d best_2_9=%s best_9_9=%s",
         drama_name,

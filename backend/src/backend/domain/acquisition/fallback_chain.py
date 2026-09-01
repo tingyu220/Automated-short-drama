@@ -86,7 +86,7 @@ class FallbackChainProvider:
 
         return AcquisitionResult(
             status=status,
-            expected_types=list(selected_types) + list(missing.keys()),
+            expected_types=["IAA", "2.9", "9.9"],
             candidates=candidates,
             selected=selected,
             missing=missing,

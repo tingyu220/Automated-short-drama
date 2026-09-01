@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, watch } from "vue"
 import { Fold, Refresh } from "@element-plus/icons-vue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { type RuntimeMode, useSystemStore } from "@/app/stores/system"
+import SessionDropdown from "@/widgets/session/SessionDropdown.vue"
 
 defineEmits<{ toggleSidebar: [] }>()
 
@@ -214,6 +215,9 @@ onUnmounted(() => {
           重启
         </el-button>
       </span>
+      <span class="topbar__session-dropdown">
+        <SessionDropdown />
+      </span>
     </div>
   </header>
 </template>
@@ -237,6 +241,7 @@ onUnmounted(() => {
 .topbar__status-dot.online { background: var(--color-status-success); }
 .topbar__status-label { color: var(--color-text-tertiary); }
 .topbar__status-value { color: var(--color-text-primary); }
+.topbar__session-dropdown { border-left: 1px solid #e5e7eb; padding-left: 12px; }
 
 @media (max-width: 720px) {
   .topbar {
@@ -262,6 +267,10 @@ onUnmounted(() => {
   }
 
   .topbar__switching {
+    display: none;
+  }
+
+  .topbar__session-dropdown :deep(.session-dropdown__label) {
     display: none;
   }
 }

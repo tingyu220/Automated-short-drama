@@ -215,6 +215,7 @@ def _build_cycle_executor(
         session,
         use_real_adapters=settings.use_real_adapters,
         on_poll_wait=on_poll_wait,
+        page=page,
     )
 
 
@@ -404,6 +405,20 @@ def main(argv: list[str] | None = None) -> int:
             f"(host={host}, pid={pid}, lease={lease_seconds}s, interval={interval}s, "
             f"mode_check_interval={mode_check_interval}s)"
         )
+
+        # 启动时清理上一轮残留的过期 CLAIMED/RUNNING 项
+        from datetime import datetime, timezone
+        from backend.application.services.queue_cycle import DEFAULT_MAX_ATTEMPTS
+        startup_queue_repo = SqlAlchemyQueueRepository(session)
+        requeued, manual = startup_queue_repo.recover_expired(
+            datetime.now(timezone.utc), DEFAULT_MAX_ATTEMPTS
+        )
+        if requeued or manual:
+            session.commit()
+            print(
+                f"Worker {worker_id}: 启动清理过期租约 "
+                f"(requeued={len(requeued)}, manual_review={len(manual)})"
+            )
 
         # 启动时清理残留的 Playwright 浏览器僵尸进程
         if not args.skip_execution:

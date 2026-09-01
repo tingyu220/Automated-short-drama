@@ -76,6 +76,8 @@ class NetworkListener:
         self._domain_keyword = platform_domain_keyword
         self._captures: list[NetworkCapture] = []
         self._handler = self._on_response
+        self._scope_active: bool = True
+        self._scope_task_id: str | None = None
         if page is not None:
             page.on("response", self._handler)
 
@@ -91,6 +93,22 @@ class NetworkListener:
         for cap in self._captures:
             groups.setdefault(cap.endpoint_type, []).append(cap)
         return groups
+
+    @property
+    def scope_task_id(self) -> str | None:
+        """当前 scope 关联的 task_id。"""
+        return self._scope_task_id
+
+    def begin_scope(self, task_id: str) -> None:
+        """开始任务级采集 scope：清除上一轮 captures，标记新 scope 激活。"""
+        self._captures.clear()
+        self._scope_task_id = task_id
+        self._scope_active = True
+
+    def end_scope(self) -> None:
+        """结束当前 scope：停止采集新 capture。"""
+        self._scope_active = False
+        self._scope_task_id = None
 
     def summary(self) -> dict[str, Any]:
         """返回发现摘要，供 diagnostics 使用。"""
@@ -125,6 +143,9 @@ class NetworkListener:
             logger.debug("网络响应捕获失败: %s", response.url, exc_info=True)
 
     def _try_capture(self, response: Any) -> bool:
+        if not self._scope_active:
+            return False
+
         url = getattr(response, "url", "")
         if not url:
             return False

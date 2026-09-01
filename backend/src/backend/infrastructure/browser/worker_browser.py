@@ -314,26 +314,31 @@ def cleanup_zombie_browsers(sessions_dir: Path | None = None) -> int:
 
 
 def _cleanup_zombie_windows() -> int:
-    """Windows 下通过 WMI 查找并杀掉 Playwright 启动的 Chrome 进程。"""
+    """Windows 下通过 PowerShell 查找并杀掉 Playwright 启动的 Chrome 进程。
+
+    使用 PowerShell CIM 代替 wmi 模块，避免 WMI 枚举无超时导致 Worker 卡死。
+    """
     killed = 0
     try:
-        import wmi  # type: ignore
-
-        c = wmi.WMI()
-        for proc in c.Win32_Process():
-            name = (proc.Name or "").lower()
-            if name not in ("chrome.exe", "chrome-headless-shell.exe"):
-                continue
-            cmd = proc.CommandLine or ""
-            if _is_playwright_chrome_cmd(cmd):
-                try:
-                    proc.Terminate()
-                    killed += 1
-                except Exception:
-                    pass
-        return killed
-    except ImportError:
-        return _cleanup_zombie_windows_fallback()
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-Command",
+                "Get-CimInstance Win32_Process | "
+                "Where-Object { $_.Name -match 'chrome' -and "
+                "$_.CommandLine -match '--remote-debugging-port' } | "
+                "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
+                "-ErrorAction SilentlyContinue; 'killed' }",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        killed = len(
+            [line for line in result.stdout.splitlines() if line.strip() == "killed"]
+        )
+    except Exception:
+        pass
+    return killed
 
 
 def _cleanup_zombie_windows_fallback() -> int:

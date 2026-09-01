@@ -121,6 +121,13 @@ class PromotionLinkListPage:
                 result.append((-1.0, "", row[1].strip() if len(row) > 1 else ""))
                 continue
             price = _classify_price(detail_text, row[3]) or 0.0
+            print(
+                f"[DEBUG list_iap] drama={drama_name} price={price} "
+                f"identity={row[1][:60]} "
+                f"row_text={row[3][:200].replace(chr(10), ' ')} "
+                f"detail={detail_text[:300].replace(chr(10), ' ')}",
+                flush=True,
+            )
             logger.info(
                 "list_iap 分类 price=%.1f identity=%s row_text_preview=%s detail_preview=%s",
                 price,
@@ -279,24 +286,43 @@ class PromotionLinkListPage:
             self._page.wait_for_load_state("domcontentloaded", timeout=10000)
         except Exception:
             pass
+        current_url = self._page.url
+        page_title = ""
+        try:
+            page_title = self._page.title()
+        except Exception:
+            pass
+        print(f"[DEBUG _search] after goto: url={current_url} title={page_title[:50]}", flush=True)
         if search_type_name:
             search_type = self._selectors.get("promotion_link_search_type")
             if search_type:
-                type_index = int(self._selectors.get("promotion_link_search_type_index", 0))
-                type_selector = self._page.locator(search_type).nth(type_index)
-                type_selector.wait_for(state="visible", timeout=15000)
-                type_selector.click()
-                option = self._page.get_by_text(search_type_name, exact=True)
-                option.wait_for(state="visible", timeout=10000)
-                option.click()
-        search_input = self._page.locator(
-            self._selectors["promotion_link_search_input"]
-        )
-        search_input.wait_for(state="visible", timeout=15000)
-        search_input.fill(drama_name)
-        self._page.locator(
-            self._selectors["promotion_link_search_button"]
-        ).click()
+                try:
+                    type_index = int(self._selectors.get("promotion_link_search_type_index", 0))
+                    type_selector = self._page.locator(search_type).nth(type_index)
+                    type_selector.wait_for(state="visible", timeout=15000)
+                    type_selector.click()
+                    option = self._page.get_by_text(search_type_name, exact=True)
+                    option.wait_for(state="visible", timeout=10000)
+                    option.click()
+                    print(f"[DEBUG _search] search_type selected: {search_type_name}", flush=True)
+                except Exception as exc:
+                    print(f"[DEBUG _search] search_type failed: {type(exc).__name__}: {str(exc)[:100]}", flush=True)
+        try:
+            search_input = self._page.locator(
+                self._selectors["promotion_link_search_input"]
+            )
+            search_input.wait_for(state="visible", timeout=15000)
+            search_input.click()
+            search_input.fill("")
+            search_input.type(drama_name)
+            self._page.wait_for_timeout(500)
+            self._page.locator(
+                self._selectors["promotion_link_search_button"]
+            ).click()
+            print(f"[DEBUG _search] search submitted: drama={drama_name}", flush=True)
+        except Exception as exc:
+            print(f"[DEBUG _search] search input/button failed: {type(exc).__name__}: {str(exc)[:100]}", flush=True)
+            return []
         row_selector = self._selectors["promotion_link_row"]
         for attempt in range(15):
             try:
@@ -330,6 +356,50 @@ class PromotionLinkListPage:
                 "identity": self._selectors["promotion_link_row_identity"],
             },
         )
+        print(f"[DEBUG _search] initial search raw_rows={len(raw_rows)} search_type={search_type_name}", flush=True)
+        if not raw_rows:
+            for _retry in range(2):
+                self._page.wait_for_timeout(2000)
+                search_input.click()
+                search_input.fill("")
+                search_input.type(drama_name)
+                self._page.wait_for_timeout(500)
+                self._page.keyboard.press("Enter")
+                self._page.wait_for_timeout(2000)
+                for attempt in range(10):
+                    try:
+                        self._page.wait_for_selector(row_selector, timeout=2000)
+                        break
+                    except Exception:
+                        if attempt < 9:
+                            self._page.wait_for_timeout(1000)
+                self._page.wait_for_timeout(1000)
+                raw_rows = self._page.locator(row_selector).evaluate_all(
+                    """
+                    (items, selectors) => items.map((item, index) => {
+                      const name = item.querySelector(selectors.name);
+                      let nameText = name ? name.textContent.trim() : "";
+                      const identity = item.querySelector(selectors.identity);
+                      const innerText = item.innerText || item.textContent || "";
+                      if (!nameText) {
+                        const m = innerText.match(/剧名[：:]\\s*(.+)/);
+                        if (m) nameText = m[1].trim();
+                      }
+                      return [
+                        nameText,
+                        identity ? identity.textContent.trim() : "",
+                        index,
+                        innerText
+                      ];
+                    })
+                    """,
+                    {
+                        "name": self._selectors["promotion_link_row_name"],
+                        "identity": self._selectors["promotion_link_row_identity"],
+                    },
+                )
+                if raw_rows:
+                    break
         return [
             (
                 str(row[0]).strip(),
@@ -532,13 +602,17 @@ def _classify_price(detail_text: str, row_text: str) -> float | None:
         if re.search(rf"(?:首充|用户支付金额|支付金额)\s*[:：]?\s*{escaped}(?!\d)", text):
             return target
 
-    # 回退：通过充值面板名称分类（超超小额/超小额→2.9, 中额/大额→9.9）
-    if "超超小额" in text or "超小额" in text:
-        if "中额" not in text and "大额" not in text:
-            return 2.9
-    if "中额" in text or "大额" in text:
-        if "超超小额" not in text and "超小额" not in text:
-            return 9.9
+    # 更宽泛的回退：匹配任意"X元"格式的价格（排除"X元/集"单价）
+    # 适用场景：详情文本含"10.3元"但没有明确标签前缀
+    price_matches = re.findall(
+        r"(?<!\d)(\d+(?:\.\d+)?)\s*元(?!/集|\d)", text
+    )
+    iap_values = [float(m) for m in price_matches if 2.0 <= float(m) <= 50.0]
+    if iap_values:
+        value = max(iap_values)
+        nearest = min((2.9, 9.9), key=lambda t: abs(t - value))
+        if abs(nearest - value) <= 3.0:
+            return nearest
 
     # 回退：从配置名称前缀提取价格（如"9.9-番茄-剧名"、"2.9-番茄-剧名"）
     name_price_match = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(?:番茄|巨量|抖音)", row_text)

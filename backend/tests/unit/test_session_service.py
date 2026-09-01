@@ -36,13 +36,14 @@ class TestFeishu:
             sessions_dir=tmp_path,
             runner=_runner_with(
                 {
+                    "ok": True,
                     "identities": {
                         "user": {
                             "available": True,
                             "status": "ready",
                             "expiresAt": "2026-08-07T00:00:00+08:00",
                         }
-                    }
+                    },
                 }
             ),
         )
@@ -57,12 +58,42 @@ class TestFeishu:
             sessions_dir=tmp_path,
             runner=_runner_with(
                 {
+                    "ok": True,
                     "identities": {
                         "user": {"available": False, "status": "unauthenticated"}
-                    }
+                    },
                 }
             ),
         )
+
+        status = service.check("feishu")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+
+    def test_probe_fallback_when_auth_not_supported(self, tmp_path):
+        """auth status 返回 ok=false（外部凭证）→ 探测成功 → logged_in。"""
+        call_count = 0
+
+        def runner(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return _lark_result({"ok": False, "error": {"message": "not supported"}})
+            return _lark_result({"ok": True, "data": {}})
+
+        service = SessionService(sessions_dir=tmp_path, runner=runner)
+
+        status = service.check("feishu")
+
+        assert status.status == STATUS_LOGGED_IN
+        assert "外部凭证" in status.message
+
+    def test_probe_fallback_fails(self, tmp_path):
+        """auth status 不支持，探测也失败 → needs_login。"""
+        def runner(*args, **kwargs):
+            return _lark_result({"ok": False, "error": {"message": "not supported"}})
+
+        service = SessionService(sessions_dir=tmp_path, runner=runner)
 
         status = service.check("feishu")
 
@@ -115,12 +146,67 @@ class TestBrowserPlatforms:
         assert status.status == STATUS_NEEDS_LOGIN
         assert status.message == "页面已跳转到登录页"
 
+    def test_check_live_fallback_when_auth_cookie_missing_but_session_valid(
+        self, tmp_path, monkeypatch
+    ):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "youxuan",
+            {
+                "cookies": [
+                    {
+                        "name": "preferences",
+                        "value": "dark",
+                        "domain": "duanju.youxuan2.cn",
+                    }
+                ]
+            },
+        )
+        monkeypatch.setattr(
+            session_service_module,
+            "_probe_browser_session",
+            lambda platform, storage: (True, "实时页面校验通过"),
+        )
+
+        status = service.check_live("youxuan")
+
+        assert status.status == STATUS_LOGGED_IN
+        assert "实时页面校验通过" in status.message
+
+    def test_check_live_fallback_when_auth_cookie_missing_and_session_invalid(
+        self, tmp_path, monkeypatch
+    ):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "youxuan",
+            {
+                "cookies": [
+                    {
+                        "name": "preferences",
+                        "value": "dark",
+                        "domain": "duanju.youxuan2.cn",
+                    }
+                ]
+            },
+        )
+        monkeypatch.setattr(
+            session_service_module,
+            "_probe_browser_session",
+            lambda platform, storage: (False, "页面已跳转到登录页"),
+        )
+
+        status = service.check_live("youxuan")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert status.message == "页面已跳转到登录页"
+
     def test_no_storage_needs_login(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
 
         assert service.check("tomato").status == STATUS_NEEDS_LOGIN
         assert service.check("delivery").status == STATUS_NEEDS_LOGIN
         assert service.check("ocean").status == STATUS_NEEDS_LOGIN
+        assert service.check("youxuan").status == STATUS_NEEDS_LOGIN
 
     def test_import_storage_then_logged_in(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)
@@ -243,6 +329,35 @@ class TestBrowserPlatforms:
         )
 
         assert service.check("delivery").status == STATUS_LOGGED_IN
+
+    def test_youxuan_without_auth_cookie_needs_login(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "youxuan",
+            {"cookies": [{"name": "preferences", "domain": "duanju.youxuan2.cn"}]},
+        )
+
+        status = service.check("youxuan")
+
+        assert status.status == STATUS_NEEDS_LOGIN
+        assert "缺少平台认证凭证" in status.message
+
+    def test_youxuan_token_logged_in(self, tmp_path):
+        service = SessionService(sessions_dir=tmp_path)
+        service.import_storage(
+            "youxuan",
+            {
+                "cookies": [
+                    {
+                        "name": "token",
+                        "value": "abc123",
+                        "domain": "duanju.youxuan2.cn",
+                    }
+                ]
+            },
+        )
+
+        assert service.check("youxuan").status == STATUS_LOGGED_IN
 
     def test_cookies_for_returns_stored_cookies(self, tmp_path):
         service = SessionService(sessions_dir=tmp_path)

@@ -24,6 +24,7 @@ PLATFORM_LOGIN_URLS: dict[str, str] = {
     "tomato": "https://www.changdupingtai.com/page/home?show=true",
     "delivery": "http://web.tjhaozew.top/juliangg/v2",
     "ocean": "https://business.oceanengine.com",
+    "youxuan": "http://duanju.youxuan2.cn",
 }
 
 _LIVE_PROBE_URLS: dict[str, str] = {
@@ -43,6 +44,7 @@ AUTH_COOKIE_NAMES: dict[str, set[str]] = {
         "uid_tt",
         "uid_tt_ss",
     },
+    "youxuan": {"token", "session"},
 }
 
 
@@ -91,7 +93,43 @@ class SessionService:
     def check_live(self, platform: str) -> SessionStatus:
         """检查本地登录态后访问平台页面，确认会话未被重定向到登录页。"""
         status = self.check(platform)
-        if status.status != STATUS_LOGGED_IN or platform == "feishu":
+        if platform == "feishu":
+            return status
+
+        if status.status == STATUS_NEEDS_LOGIN and status.storage_path:
+            storage = self._load_storage(platform)
+            if storage.get("cookies"):
+                active, message = _probe_browser_session(
+                    platform, _sanitize_storage(storage)
+                )
+                if active is True:
+                    return SessionStatus(
+                        platform=status.platform,
+                        status=STATUS_LOGGED_IN,
+                        login_url=status.login_url,
+                        message=f"实时页面校验通过（{status.message}）",
+                        expires_at=status.expires_at,
+                        storage_path=status.storage_path,
+                    )
+                if active is False:
+                    return SessionStatus(
+                        platform=status.platform,
+                        status=STATUS_NEEDS_LOGIN,
+                        login_url=status.login_url,
+                        message=message,
+                        expires_at=status.expires_at,
+                        storage_path=status.storage_path,
+                    )
+                return SessionStatus(
+                    platform=status.platform,
+                    status=STATUS_UNKNOWN,
+                    login_url=status.login_url,
+                    message=message,
+                    expires_at=status.expires_at,
+                    storage_path=status.storage_path,
+                )
+
+        if status.status != STATUS_LOGGED_IN:
             return status
 
         storage = self._load_storage(platform)
@@ -170,7 +208,7 @@ class SessionService:
         ]
 
     def _check_feishu(self) -> SessionStatus:
-        """飞书登录态来自 lark-cli auth status。"""
+        """飞书登录态：先试 lark-cli auth status，不支持时用实际 API 调用探测。"""
         try:
             result = self._runner(
                 _lark_auth_command(),
@@ -178,7 +216,19 @@ class SessionService:
                 text=True,
                 timeout=30,
             )
-            data = json.loads(result.stdout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("飞书登录态检查失败: %s", exc)
+            return SessionStatus(
+                platform="feishu",
+                status=STATUS_UNKNOWN,
+                login_url=PLATFORM_LOGIN_URLS["feishu"],
+                message="无法读取 lark-cli 登录态",
+            )
+        try:
+            data = json.loads(result.stdout or result.stderr)
+        except json.JSONDecodeError:
+            return self._probe_feishu()
+        if data.get("ok"):
             user = (data.get("identities") or {}).get("user") or {}
             available = user.get("available") is True
             status = str(user.get("status", ""))
@@ -196,13 +246,49 @@ class SessionService:
                 login_url=PLATFORM_LOGIN_URLS["feishu"],
                 message="飞书用户身份未认证",
             )
+        # auth status 不支持（credentials provided externally）→ 用实际 API 探测
+        return self._probe_feishu()
+
+    def _probe_feishu(self) -> SessionStatus:
+        """通过实际 lark-cli sheets 调用验证飞书可访问性。"""
+        try:
+            settings = Settings()
+        except Exception:
+            settings = None
+        probe_url = ""
+        if settings:
+            probe_url = settings.feishu_private_sheet_url or settings.feishu_task_sheet_url or ""
+        if not probe_url:
+            probe_url = PLATFORM_LOGIN_URLS.get("feishu", "")
+        cmd = _lark_probe_command(probe_url)
+        try:
+            result = self._runner(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            data = json.loads(result.stdout or result.stderr)
+            if data.get("ok"):
+                return SessionStatus(
+                    platform="feishu",
+                    status=STATUS_LOGGED_IN,
+                    login_url=PLATFORM_LOGIN_URLS["feishu"],
+                    message="飞书可访问（外部凭证）",
+                )
+            return SessionStatus(
+                platform="feishu",
+                status=STATUS_NEEDS_LOGIN,
+                login_url=PLATFORM_LOGIN_URLS["feishu"],
+                message="飞书 API 访问失败",
+            )
         except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-            logger.warning("飞书登录态检查失败: %s", exc)
+            logger.warning("飞书探测失败: %s", exc)
             return SessionStatus(
                 platform="feishu",
                 status=STATUS_UNKNOWN,
                 login_url=PLATFORM_LOGIN_URLS["feishu"],
-                message="无法读取 lark-cli 登录态",
+                message="飞书探测异常",
             )
 
     def _check_browser_session(self, platform: str) -> SessionStatus:
@@ -264,6 +350,22 @@ def _lark_auth_command() -> list[str]:
     return ["lark-cli", "auth", "status"]
 
 
+def _lark_probe_command(url: str) -> list[str]:
+    """返回 lark-cli sheets +workbook-info 探测命令。"""
+    if not url:
+        return ["lark-cli", "auth", "status"]
+    resolved = shutil.which("lark-cli") or shutil.which("lark-cli.cmd")
+    base = ["lark-cli"]
+    if resolved and resolved.lower().endswith((".bat", ".cmd")):
+        base = ["cmd", "/c", "lark-cli"]
+    return base + [
+        "sheets", "+workbook-info",
+        "--url", url,
+        "--as", "user",
+        "--format", "json",
+    ]
+
+
 def has_platform_auth_cookie(cookies: list[dict], platform: str) -> bool:
     """判断 Cookie 中是否含平台登录后才会出现的认证凭证。"""
     names = AUTH_COOKIE_NAMES.get(platform, set())
@@ -283,6 +385,7 @@ _LOGIN_PAGE_TEXT: dict[str, tuple[str, ...]] = {
     "tomato": ("请登录", "未登录"),
     "delivery": ("请登录", "未登录", "飞书授权登录"),
     "ocean": ("请登录", "未登录"),
+    "youxuan": ("请登录", "未登录"),
 }
 
 

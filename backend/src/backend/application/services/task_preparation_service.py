@@ -14,6 +14,7 @@ from backend.application.services.link_acquisition_service import (
 from backend.domain.acquisition.promotion_asset_validator import (
     PromotionAssetValidator,
 )
+from backend.domain.rules.native_expected_link_policy import ExpectedLinkPolicy
 from backend.domain.common.timezones import as_utc
 from backend.domain.errors.domain_error import DramaMismatchError
 from backend.domain.queue.queue_item import QueueItem, QueueState
@@ -47,7 +48,7 @@ class PreparationOutcome:
     details: dict = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ResolvedLinks:
     """冻结链接及不阻断 IAP 提取失败记录。"""
 
@@ -55,6 +56,7 @@ class ResolvedLinks:
     iap_failures: list[dict[str, str]] = field(default_factory=list)
     diag: dict[str, Any] = field(default_factory=dict)
     failure_code: str | None = None
+    acquisition_missing: dict[str, str] = field(default_factory=dict)
 
 
 def _build_details(resolved: ResolvedLinks) -> dict[str, Any]:
@@ -88,6 +90,7 @@ class TaskPreparationService:
         self._queue_repo = queue_repo
         self._price_rules = price_rules
         self._youxuan = youxuan
+        self._expected_link_policy = ExpectedLinkPolicy(price_rules)
         self._link_acquisition = link_acquisition or LinkAcquisitionService(
             LegacyDomProvider(tomato, price_rules),
             PromotionAssetValidator(),
@@ -161,9 +164,7 @@ class TaskPreparationService:
                 failure_code=exc.code,
                 details=dict(exc.details),
             )
-        if not resolved.links or (
-            source.platform == "TOMATO" and not resolved.links.get("IAA")
-        ):
+        if not resolved.links:
             task.status = TaskStatus.MANUAL_REVIEW
             task.link_status = "FAILED"
             self._save(task, existing)
@@ -171,6 +172,20 @@ class TaskPreparationService:
                 MANUAL_REVIEW,
                 failure_code=resolved.failure_code or "NO_LINKS",
             )
+
+        if source.platform == "TOMATO":
+            missing_expected = self._check_link_completeness(
+                resolved.links, resolved.acquisition_missing
+            )
+            if missing_expected:
+                task.status = TaskStatus.MANUAL_REVIEW
+                task.link_status = "FAILED"
+                self._save(task, existing)
+                return PreparationOutcome(
+                    MANUAL_REVIEW,
+                    failure_code="INCOMPLETE_LINK_SET",
+                    details={"missing": missing_expected},
+                )
 
         link_status = _resolved_link_status(resolved.links)
         task.link_set = resolved.links
@@ -232,6 +247,7 @@ class TaskPreparationService:
             iap_failures=iap_failures,
             diag=iap_diag,
             failure_code=_acquisition_failure_code(acquisition),
+            acquisition_missing=dict(acquisition.missing),
         )
 
     def _resolve_youxuan_links(self, task: DramaTask) -> ResolvedLinks:
@@ -250,6 +266,34 @@ class TaskPreparationService:
             self._task_repo.add(task)
         else:
             self._task_repo.update(task)
+
+    def _check_link_completeness(
+        self,
+        links: dict[str, str],
+        acquisition_missing: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """检查链接完整性。
+
+        区分两种情况：
+        - NOT_FOUND：Provider 确认后台没有该档位 → EXPECTED_ABSENT → 放行
+        - 其他原因（AMBIGUOUS / 验证失败等）：有但没提取到 → 拦截
+
+        Returns:
+            空字典表示通过；非空字典 {link_type: reason} 表示需要拦截的缺失项。
+        """
+        acq_missing = acquisition_missing or {}
+        issues: dict[str, str] = {}
+        for link_type in ("IAA", "2.9", "9.9"):
+            expectation = self._expected_link_policy.get_expectation(link_type)
+            if expectation == "EXPECTED" and link_type not in links:
+                missing_reason = acq_missing.get(link_type, "")
+                if missing_reason == "NOT_FOUND":
+                    pass
+                else:
+                    issues[link_type] = f"EXPECTED_but_{missing_reason or 'EXTRACTION_FAILED'}"
+            elif expectation == "EXPECTED_ABSENT" and link_type in links:
+                issues[link_type] = "EXPECTED_ABSENT_but_FOUND"
+        return issues
 
     def _ensure_queue(self, task: DramaTask) -> None:
         active = [

@@ -364,7 +364,8 @@ const resourceStatuses = computed(() => {
     platformStatus("feishu", "飞书"),
     platformStatus("tomato", "番茄"),
     platformStatus("delivery", "投放系统"),
-    platformStatus("ocean", "巨量")
+    platformStatus("ocean", "巨量"),
+    platformStatus("youxuan", "优选")
   ]
 })
 

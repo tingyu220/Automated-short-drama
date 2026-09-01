@@ -239,22 +239,32 @@ class PromotionMatcher:
     def _match_by_promotion_id(
         self, candidates: list[PromotionAsset]
     ) -> list[PromotionAsset] | None:
-        """按 promotion_id 匹配（通常只有一个）。"""
-        with_promo_id = [c for c in candidates if c.promotion_id]
-        if not with_promo_id:
+        """按 promotion_id 匹配：需要 Expected ID（来自 confirmed_match）。
+
+        没有 confirmed_match → 跳过此层级（返回 None）。
+        有 confirmed_match → 只返回 promotion_id 等于 locator_key 的候选。
+        """
+        if not self._confirmed_match or not self._confirmed_match.locator_key:
             return None
-        # promotion_id 是唯一的，有多少返回多少
-        # 同档位下多个不同 promotion_id 就是歧义
-        return with_promo_id
+
+        key = self._confirmed_match.locator_key
+        matched = [c for c in candidates if c.promotion_id and c.promotion_id == key]
+        return matched if matched else None
 
     def _match_by_template_id(
         self, candidates: list[PromotionAsset]
     ) -> list[PromotionAsset] | None:
-        """按 template_id 匹配。"""
-        with_tpl_id = [c for c in candidates if c.template_id]
-        if not with_tpl_id:
+        """按 template_id 匹配：需要 Expected ID（来自 confirmed_match）。
+
+        没有 confirmed_match → 跳过此层级（返回 None）。
+        有 confirmed_match → 只返回 template_id 等于 locator_key 的候选。
+        """
+        if not self._confirmed_match or not self._confirmed_match.locator_key:
             return None
-        return with_tpl_id
+
+        key = self._confirmed_match.locator_key
+        matched = [c for c in candidates if c.template_id and c.template_id == key]
+        return matched if matched else None
 
     def _match_by_confirmed(
         self, candidates: list[PromotionAsset]

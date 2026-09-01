@@ -5,6 +5,7 @@ import pytest
 
 from backend.application.services.session_login import (
     SessionLoginManager,
+    _LoginTask,
     _verify_generic_logged_in,
 )
 
@@ -14,6 +15,29 @@ def test_finish_without_running_returns_false(tmp_path):
 
     assert manager.is_running("tomato") is False
     assert manager.finish("tomato") is False
+
+
+def test_finish_sets_user_confirmed(tmp_path):
+    manager = SessionLoginManager(sessions_dir=tmp_path)
+    task = _LoginTask()
+    task.running = True
+    manager._tasks["youxuan"] = task
+
+    result = manager.finish("youxuan")
+
+    assert result is True
+    assert task.user_confirmed is True
+
+
+def test_reset_does_not_set_user_confirmed(tmp_path):
+    manager = SessionLoginManager(sessions_dir=tmp_path)
+    task = _LoginTask()
+    task.running = True
+    manager._tasks["youxuan"] = task
+
+    manager.reset("youxuan")
+
+    assert task.user_confirmed is False
 
 
 def test_start_unsupported_platform_raises(tmp_path):
@@ -61,13 +85,28 @@ class FakeContext:
         return self._page
 
 
-def test_verify_rejects_missing_auth_cookie():
+def test_verify_rejects_when_page_redirects_to_login():
     context = FakeContext(
         cookies=[{"name": "passport_csrf_token", "domain": ".oceanengine.com"}],
-        page=FakePage(url="https://business.oceanengine.com/brand/index"),
+        page=FakePage(
+            url="https://business.oceanengine.com/login",
+            body="请登录",
+        ),
     )
 
     assert _verify_generic_logged_in("ocean", context) is False
+
+
+def test_verify_passes_without_auth_cookie_but_page_probe_ok():
+    context = FakeContext(
+        cookies=[{"name": "preferences", "domain": "duanju.youxuan2.cn"}],
+        page=FakePage(
+            url="http://duanju.youxuan2.cn/dashboard",
+            body="优选短剧推广平台\n剧目管理",
+        ),
+    )
+
+    assert _verify_generic_logged_in("youxuan", context) is True
 
 
 def test_verify_rejects_redirect_back_to_login_page():

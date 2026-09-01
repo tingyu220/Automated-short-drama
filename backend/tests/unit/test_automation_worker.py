@@ -276,12 +276,14 @@ def test_cycle_executor_uses_real_mode_from_settings(monkeypatch) -> None:
         *,
         use_real_adapters=False,
         on_poll_wait=None,
+        page=None,
     ):
         captured["executor_settings"] = received_settings
         captured["bundle"] = received_bundle
         captured["session"] = received_session
         captured["use_real_adapters"] = use_real_adapters
         captured["on_poll_wait"] = on_poll_wait
+        captured["executor_page"] = page
         return executor
 
     monkeypatch.setattr(automation_worker, "build_adapters", fake_build_adapters)
@@ -307,6 +309,7 @@ def test_cycle_executor_uses_real_mode_from_settings(monkeypatch) -> None:
         "session": session,
         "use_real_adapters": True,
         "on_poll_wait": None,
+        "executor_page": page,
     }
 
 

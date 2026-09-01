@@ -10,7 +10,6 @@ from pathlib import Path
 from backend.application.services.session_service import (
     PLATFORM_LOGIN_URLS,
     SessionService,
-    has_platform_auth_cookie,
 )
 from backend.infrastructure.config.settings import Settings
 
@@ -27,6 +26,7 @@ _LOGIN_WAIT_SECONDS = 600
 _LOGIN_PAGE_TEXT: dict[str, tuple[str, ...]] = {
     "delivery": ("请登录", "未登录", "飞书授权登录"),
     "ocean": ("请登录", "未登录"),
+    "youxuan": ("请登录", "未登录"),
 }
 
 
@@ -35,6 +35,7 @@ class _LoginTask:
     running: bool = True
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
+    user_confirmed: bool = False
 
 
 class SessionLoginManager:
@@ -74,6 +75,7 @@ class SessionLoginManager:
             if not task.running:
                 task.running = False
                 return False
+            task.user_confirmed = True
             task.stop.set()
             return True
 
@@ -111,7 +113,7 @@ class SessionLoginManager:
                 )
                 try:
                     ok = _login_page(platform, context, task.stop)
-                    if ok:
+                    if ok or task.user_confirmed:
                         _save_storage(context, self.storage_path(platform))
                 finally:
                     context.close()
@@ -218,9 +220,7 @@ def _login_generic(platform: str, context, stop: threading.Event) -> bool:
 
 
 def _verify_generic_logged_in(platform: str, context) -> bool:
-    """认证 Cookie 存在且回访页面未跳登录页才视为已登录。"""
-    if not has_platform_auth_cookie(context.cookies(), platform):
-        return False
+    """回访平台页面，确认会话未被重定向到登录页。"""
     probe = context.new_page()
     try:
         probe.goto(
