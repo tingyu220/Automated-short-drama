@@ -1,6 +1,6 @@
 import { defineStore } from "pinia"
 import { ref } from "vue"
-import { apiGet, apiPost } from "@/shared/api/http-client"
+import { apiDelete, apiGet, apiPost } from "@/shared/api/http-client"
 import { toErrorMessage } from "@/shared/api/error-handler"
 
 export interface RuleSet {
@@ -17,6 +17,10 @@ export interface RuleVersion {
   version: string
   status: string
   published_at: string | null
+}
+
+export interface RuleVersionDetail extends RuleVersion {
+  payload_json: Record<string, unknown>
 }
 
 export interface SimulationOutput {
@@ -161,6 +165,37 @@ export const useRuleStore = defineStore("rule", () => {
     }
   }
 
+  async function deleteVersion(
+    ruleSetId: string,
+    versionId: string
+  ): Promise<boolean> {
+    loading.value = true
+    error.value = null
+    try {
+      await apiDelete(`/rules/${ruleSetId}/versions/${versionId}`)
+      return true
+    } catch (err) {
+      error.value = toErrorMessage(err)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchVersionDetail(
+    ruleSetId: string,
+    versionId: string
+  ): Promise<RuleVersionDetail | null> {
+    try {
+      return await apiGet<RuleVersionDetail>(
+        `/rules/${ruleSetId}/versions/${versionId}`
+      )
+    } catch (err) {
+      error.value = toErrorMessage(err)
+      return null
+    }
+  }
+
   async function simulatePrice(
     candidates: number[]
   ): Promise<SimulationResult | null> {
@@ -193,6 +228,8 @@ export const useRuleStore = defineStore("rule", () => {
     validate,
     saveDraft,
     publish,
+    deleteVersion,
+    fetchVersionDetail,
     simulatePrice
   }
 })

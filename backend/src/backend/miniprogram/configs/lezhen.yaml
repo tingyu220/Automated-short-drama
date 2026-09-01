@@ -1,0 +1,33 @@
+# 乐珍剧场 — MiniProgram 固定配置
+#
+# 所有业务固定配置保存在此，不硬编码在 Python 代码中。
+# 后续扩展其他剧场时新增 YAML 文件即可。
+
+mini_program:
+  app_id: wx10501bcb2a609cd1
+  original_id: gh_377357577040
+  name: 乐珍剧场
+
+promotion:
+  landing_channel: 微信小程序
+  monetization_type: IAP
+  promotion_channel: 巨量-资产化
+  unlock_type: 充值解锁
+  callback_template: 默认3:1
+  charge_type: 每集固定价格
+
+ocean:
+  subject: 厦门夜洛缭绕科技有限公司
+  copyright_owner: 夜洛缭绕
+  category:
+    level_1: 其他剧情
+    level_2: 其他
+
+price_tiers:
+  "2.9":
+    recharge_template: "A测－2.9元看全集（含周代"
+    product_library: "抖小iap-2.9"
+
+  "9.9":
+    recharge_template: "A测－lw超低10看全集（含周代"
+    product_library: "抖小iap-9.9"

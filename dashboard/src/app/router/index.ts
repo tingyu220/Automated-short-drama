@@ -42,6 +42,10 @@ const routes: RouteRecordRaw[] = [
     name: "records",
     component: () => import("@/pages/records/index.vue"),
     meta: { title: "系统记录" }
+  },
+  {
+    path: "/miniprogram",
+    redirect: "/?tab=A"
   }
 ]
 

@@ -18,7 +18,8 @@
 
 - IAA 链接只能从番茄免费入口提取，本地禁止构造或拼接链接。
 - 选集阈值默认 50：选集数 `> 50` 选第 2 集，`<= 50` 选第 1 集。
-- 链接长度不等于 501 记为 `SPECIAL_LENGTH`，不判为无效。
+- URL 不符合番茄 Deep Link 规则时仍保存为待核查 `PromotionAsset`，但不得冻结到
+  `link_set`、回填飞书或进入后续搭建，任务转 `LINK_VALIDATION_FAILED` 人工处理。
 
 ### 1.2 IAP 模板区间与排序
 
@@ -45,11 +46,12 @@
 
 ### 1.5 来源可追踪
 
-每条链接统一记录：`task_id、drama_name、link_type、promotion_url、source_platform、source_entry、acquisition_method、source_column、url_length、link_status、acquired_at、rule_version`。
+每条链接统一记录为 `PromotionAsset`：`task_id、drama_name、external_drama_id、link_type、promotion_url、promotion_id、episode、template_id、template_name、price、acquisition_method、acquisition_status、verification_status、created_or_existing、raw_data、created_at、updated_at`。
 
-- 番茄来源：`TOMATO / FREE|PAID / PAGE_EXTRACTION`。
+- 当前番茄旧链路来源统一标记 `TOMATO / LEGACY`，原页面入口与读取方式保存在 `raw_data`。
 - 剧变来源：`JUBIAN / FEISHU_SHEET / DIRECT_READ / J|K|L`。
-- 链接去重键：`task_id + link_type + url_hash`。
+- 业务身份优先使用平台剧目 ID：IAA 为 `platform + external_drama_id + IAA + episode`；IAP 为 `platform + external_drama_id + link_type + template_id`。缺少外部身份时禁止猜测合并。
+- `DramaTask.link_set` 继续保留，但只保存已验证、可供后续流程消费的兼容快照；完整事实以 `PromotionAsset` 为准。
 - 任意有效链接（IAA/2.9/9.9）都可获取专辑 ID，默认顺序 IAA → 2.9 → 9.9。
 
 ### 1.6 同名剧时间容差防误选

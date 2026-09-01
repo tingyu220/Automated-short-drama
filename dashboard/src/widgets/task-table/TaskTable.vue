@@ -68,7 +68,7 @@ function continueLabel(task: TaskView): string {
 
 function stageStatus(task: TaskView): LinkReadinessStageStatus {
   if (task.status.toUpperCase() === "LINK_EXTRACTED") return "done"
-  const stages = buildLinkReadinessStages(task.current_stage, task.status)
+  const stages = buildLinkReadinessStages(task.current_stage, task.status, [], task.platform)
   return (
     stages.find((stage) => stage.status === "failed")?.status ??
     stages.find((stage) => stage.status === "current")?.status ??
@@ -128,7 +128,7 @@ function endTypeLabel(endType: string): string {
                 class="task-table__stage"
                 :class="`is-${stageStatus(row)}`"
               >
-                {{ getLinkReadinessStageLabel(row.current_stage, row.status) }}
+                {{ getLinkReadinessStageLabel(row.current_stage, row.status, row.platform) }}
               </span>
             </td>
             <td>

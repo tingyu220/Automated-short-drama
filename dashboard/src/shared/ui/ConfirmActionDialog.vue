@@ -7,10 +7,12 @@ withDefaults(
     title: string
     content: string
     confirmText?: string
+    confirmType?: "primary" | "danger"
     loading?: boolean
   }>(),
   {
     confirmText: "确认",
+    confirmType: "primary",
     loading: false
   }
 )
@@ -44,7 +46,7 @@ function onConfirm() {
     <p class="confirm-dialog__content">{{ content }}</p>
     <template #footer>
       <ElButton @click="onUpdate(false)">取消</ElButton>
-      <ElButton type="primary" :loading="loading" @click="onConfirm">
+      <ElButton :type="confirmType" :loading="loading" @click="onConfirm">
         {{ confirmText }}
       </ElButton>
     </template>

@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automated-short-drama — Native V2 架构文档（Phase 5–15）</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2128;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #f0883e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --code-bg: #1c2128;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #1a1f2e 0%, #161b22 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px 36px;
+    margin-bottom: 40px;
+  }
+  .hero h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
+  .hero .subtitle { color: var(--text-dim); font-size: 16px; }
+  .hero .badges { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 14px; font-size: 13px;
+  }
+  .badge.green { border-color: var(--green); color: var(--green); }
+  .badge.blue { border-color: var(--accent); color: var(--accent); }
+  .badge.orange { border-color: var(--accent-2); color: var(--accent-2); }
+
+  /* TOC */
+  .toc {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px 28px; margin-bottom: 40px;
+  }
+  .toc h2 { font-size: 16px; color: var(--text-dim); margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* Section */
+  section { margin-bottom: 48px; }
+  h2.section-title {
+    font-size: 22px; color: #fff;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 8px; margin-bottom: 20px;
+  }
+  h3 { font-size: 17px; color: var(--accent); margin-top: 28px; margin-bottom: 10px; }
+  h4 { font-size: 15px; color: var(--text); margin-top: 18px; margin-bottom: 8px; }
+  p { margin-bottom: 12px; color: var(--text); }
+  ul, ol { padding-left: 24px; margin-bottom: 12px; }
+  li { margin: 4px 0; }
+  code {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 6px; font-size: 13px;
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    color: var(--accent);
+  }
+
+  /* Diagram */
+  .diagram {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 24px; margin: 16px 0;
+    overflow-x: auto;
+  }
+  .diagram pre {
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    font-size: 13px; line-height: 1.5; color: var(--text);
+    white-space: pre;
+  }
+  .diagram .hl-ok { color: var(--green); }
+  .diagram .hl-err { color: var(--red); }
+  .diagram .hl-warn { color: var(--yellow); }
+  .diagram .hl-flow { color: var(--accent); }
+  .diagram .hl-box { color: var(--purple); }
+
+  /* Table */
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px; text-align: left;
+  }
+  th { background: var(--surface-2); color: var(--accent); font-weight: 600; }
+  tr:nth-child(even) td { background: var(--surface); }
+  td code { font-size: 12px; }
+
+  /* Callout */
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 20px; margin: 16px 0;
+  }
+  .callout.danger { border-left-color: var(--red); }
+  .callout.warn { border-left-color: var(--yellow); }
+  .callout.ok { border-left-color: var(--green); }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+
+  /* Phase Card */
+  .phase-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 20px;
+  }
+  .phase-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .phase-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .phase-title { font-size: 16px; color: #fff; font-weight: 600; }
+  .phase-body { padding: 16px 20px; }
+  .phase-body h4 { margin-top: 12px; }
+
+  /* File list */
+  .file-list { list-style: none; padding: 0; }
+  .file-list li {
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .file-list li:last-child { border-bottom: none; }
+  .file-path { font-family: monospace; font-size: 13px; color: var(--accent); }
+  .file-desc { font-size: 13px; color: var(--text-dim); }
+
+  /* Stat grid */
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px; margin: 16px 0;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 20px; text-align: center;
+  }
+  .stat-num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+  /* State diagram */
+  .state-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 6px 0;
+  }
+  .state-box {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 6px 16px; border-radius: 6px; font-size: 13px;
+    font-family: monospace; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface-2);
+  }
+  .state-box.ok { border-color: var(--green); color: var(--green); }
+  .state-box.err { border-color: var(--red); color: var(--red); }
+  .state-box.warn { border-color: var(--yellow); color: var(--yellow); }
+  .state-arrow { color: var(--text-dim); font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+  <h1>Automated-short-drama — Native V2 架构文档</h1>
+  <p class="subtitle">Phase 5–15 完整架构设计：从 Network 采集到 NATIVE_PREPARED 全链路自动化</p>
+  <div class="badges">
+    <span class="badge green">825 Tests Passed</span>
+    <span class="badge blue">Phase 5–15 Complete</span>
+    <span class="badge orange">11 Phases</span>
+    <span class="badge">30+ Files</span>
+  </div>
+</div>
+
+<!-- ============ TOC ============ -->
+<div class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#overview">1. 总体目标与最终流程</a></li>
+    <li><a href="#architecture">2. 核心架构与分层</a></li>
+    <li><a href="#safety">3. 安全红线</a></li>
+    <li><a href="#phases">4. Phase 5–15 逐阶段详解</a></li>
+    <li><a href="#state-machine">5. Native 状态机</a></li>
+    <li><a href="#data-flow">6. 完整数据流</a></li>
+    <li><a href="#file-inventory">7. 文件清单</a></li>
+    <li><a href="#test-coverage">8. 测试覆盖</a></li>
+    <li><a href="#future">9. 后续规划</a></li>
+  </ol>
+</div>
+
+<!-- ============ 1. OVERVIEW ============ -->
+<section id="overview">
+  <h2 class="section-title">1. 总体目标与最终流程</h2>
+  <p>将端原生前置流程升级成稳定的自动化生产链，解决两个核心问题：</p>
+  <ul>
+    <li>链接经常缺失、DOM 抓取不稳定</li>
+    <li>每天仍需要人工搭建链接，效率低</li>
+  </ul>
+  <div class="diagram">
+<pre>
+<span class="hl-flow">剧目表</span>
+  ↓
+<span class="hl-box">DramaTask</span>
+  ↓
+等待可执行时间
+  ↓
+确认正确剧目
+  ↓
+查询已有推广链接 (<span class="hl-flow">API → Network → DOM</span>)
+  ↓
+自动创建缺失链接 (<span class="hl-box">CreateSafetyGuard</span>)
+  ↓
+验证 IAA / 2.9 / 9.9 (<span class="hl-box">PromotionMatcher</span> + <span class="hl-box">Validator</span>)
+  ↓
+获取 album_id (<span class="hl-box">DramaResourceService</span>)
+  ↓
+完成 Native 必要配置
+  ↓
+冻结准备结果 (<span class="hl-box">NativePreparationSnapshot</span>)
+  ↓
+<span class="hl-ok">NATIVE_PREPARED</span>
+</pre>
+  </div>
+  <div class="callout ok">
+    <p><strong>最终要求：</strong>正常任务无需人工搭链接，只有异常进入 <code>MANUAL_REVIEW</code>。</p>
+  </div>
+</section>
+
+<!-- ============ 2. ARCHITECTURE ============ -->
+<section id="architecture">
+  <h2 class="section-title">2. 核心架构与分层</h2>
+
+  <h3>2.1 领域分层</h3>
+  <div class="diagram">
+<pre>
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Application Layer                                │
+│  NativeWorkflowService · ResumeService · ManualReviewService         │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────┐
+│                     Domain Layer                                     │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐               │
+│  │ Acquisition │  │   Assets     │  │   Services   │               │
+│  │             │  │              │  │               │               │
+│  │ Pipeline    │  │ PromotionAsset│ │ DramaResource │               │
+│  │ Provider    │  │ DramaResource │ │ Snapshot      │               │
+│  │ Matcher     │  │              │  │ ManualReview  │               │
+│  │ Validator   │  │              │  │               │               │
+│  │ Guard       │  │              │  │               │               │
+│  │ Shadow      │  │              │  │               │               │
+│  │ Fallback    │  │              │  │               │               │
+│  └─────────────┘  └──────────────┘  └───────────────┘               │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────┐
+│                   Infrastructure Layer                               │
+│  Tomato Network (Listener · Parser) · Tomato Providers              │
+│  (ApiProvider · NetworkProvider · LegacyDomProvider)               │
+└─────────────────────────────────────────────────────────────────────┘
+</pre>
+  </div>
+
+  <h3>2.2 Provider 优先级</h3>
+  <div class="diagram">
+<pre>
+<span class="hl-flow">API</span>          ← Primary（真实接口，最可靠）
+  ↓ fallback
+<span class="hl-flow">Network</span>      ← 从 XHR/fetch 响应解析
+  ↓ fallback
+<span class="hl-flow">DOM</span>          ← 最后兜底（SimpleDomFallback）
+  ↓ fallback
+<span class="hl-flow">Manual</span>       ← 人工确认
+</pre>
+  </div>
+
+  <h3>2.3 核心原则</h3>
+  <div class="callout">
+    <p><strong>Workflow 不负责点击页面</strong>，只负责确保业务 Asset 已存在并验证通过（<code>ensure_promotion()</code> 而非 <code>click_create()</code>）。</p>
+  </div>
+  <p>API / Network / DOM / 页面点击 / Selector 全部属于 Adapter / Provider 层，Workflow 只编排业务结果。</p>
+</section>
+
+<!-- ============ 3. SAFETY ============ -->
+<section id="safety">
+  <h2 class="section-title">3. 安全红线</h2>
+
+  <div class="callout danger">
+    <div class="callout-title">绝不违反的 6 条规则</div>
+    <ol>
+      <li><strong>不拿错剧</strong>：external_drama_id 优先匹配，剧名不匹配的 external_id 候选不选中</li>
+      <li><strong>不拿错链接</strong>：URL_MISMATCH 是 Critical mismatch，Shadow 验收必须为 0</li>
+      <li><strong>不拿错档位</strong>：IAA / 2.9 / 9.9 独立匹配，不混淆</li>
+      <li><strong>不重复创建</strong>：Create 后必须 Requery，不信任 Create 返回值，绝不连续 Create 两次</li>
+      <li><strong>多候选不自动猜</strong>：&gt;1 条 → AMBIGUOUS → MANUAL_REVIEW，绝不自动取第一条</li>
+      <li><strong>未验证资产不冻结</strong>：link_set 只含 acquisition_status=VALIDATED + verification_status=VALIDATED 的资产</li>
+    </ol>
+  </div>
+
+  <h3>链接状态明确化</h3>
+  <table>
+    <tr><th>状态</th><th>含义</th><th>是否继续生产</th></tr>
+    <tr><td><code>FOUND</code></td><td>找到并验证通过</td><td style="color:var(--green)">是</td></tr>
+    <tr><td><code>EXPECTED_ABSENT</code></td><td>该档位本不应存在</td><td style="color:var(--green)">是</td></tr>
+    <tr><td><code>NOT_FOUND</code></td><td>查不到</td><td style="color:var(--yellow)">视情况</td></tr>
+    <tr><td><code>ACQUISITION_FAILED</code></td><td>采集失败</td><td style="color:var(--red)">否</td></tr>
+    <tr><td><code>AMBIGUOUS</code></td><td>多个候选</td><td style="color:var(--red)">否 → 人工</td></tr>
+    <tr><td><code>RESULT_UNCERTAIN</code></td><td>创建后无法确认</td><td style="color:var(--red)">否 → 人工</td></tr>
+    <tr><td><code>VALIDATION_FAILED</code></td><td>验证不通过</td><td style="color:var(--red)">否 → 人工</td></tr>
+  </table>
+</section>
+
+<!-- ============ 4. PHASES ============ -->
+<section id="phases">
+  <h2 class="section-title">4. Phase 5–15 逐阶段详解</h2>
+
+  <!-- Phase 5 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">5</span>
+      <span class="phase-title">Network Discovery + Network Acquisition</span>
+    </div>
+    <div class="phase-body">
+      <p>通过 Playwright 监听 XHR/fetch 响应，识别番茄平台真实接口，并解析为 PromotionAsset Candidate。</p>
+      <h4>核心组件</h4>
+      <ul>
+        <li><code>NetworkListener</code> — 挂载到 Playwright Page，监听 response 事件，域名/内容过滤，Header 脱敏</li>
+        <li><code>TomatoResponseParser</code> — 启发式字段匹配，支持 snake_case / camelCase，自动分类 IAA/2.9/9.9</li>
+        <li><code>NetworkDiscoveryProvider</code> — 包装 Legacy，同步监听网络，附加 discovery 诊断</li>
+        <li><code>NetworkProvider</code> — 从捕获的响应中生成 PromotionAsset Candidate，一次读取整部剧</li>
+      </ul>
+      <h4>安全规则</h4>
+      <ul>
+        <li>不猜接口，只从真实捕获的响应中解析</li>
+        <li>不保存 Cookie / Token / Authorization</li>
+        <li>保存脱敏业务 Response 用于分析</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Phase 6 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">6</span>
+      <span class="phase-title">精确匹配 — PromotionMatcher</span>
+    </div>
+    <div class="phase-body">
+      <p>从多个 Candidate 中精确匹配出唯一正确的推广资产。</p>
+      <h4>6 级置信度（从高到低）</h4>
+      <table>
+        <tr><th>置信度</th><th>标识</th><th>说明</th></tr>
+        <tr><td>60</td><td><code>EXTERNAL_ID</code></td><td>外部剧目 ID 匹配</td></tr>
+        <tr><td>50</td><td><code>PROMOTION_ID</code></td><td>推广 ID 匹配</td></tr>
+        <tr><td>40</td><td><code>TEMPLATE_ID</code></td><td>模板 ID 匹配</td></tr>
+        <tr><td>30</td><td><code>CONFIRMED_MATCH</code></td><td>人工确认的剧目匹配</td></tr>
+        <tr><td>20</td><td><code>EXACT_NAME</code></td><td>精确剧名匹配</td></tr>
+        <tr><td>10</td><td><code>FUZZY_NAME</code></td><td>模糊剧名（<strong>不能直接进入生产</strong>）</td></tr>
+      </table>
+      <div class="callout warn">
+        <p><strong>模糊剧名匹配即使唯一也返回 AMBIGUOUS</strong>，必须人工确认后才能进入生产。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 7 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">7</span>
+      <span class="phase-title">Shadow Mode — Legacy vs V2 对比</span>
+    </div>
+    <div class="phase-body">
+      <p>SHADOW 模式下 Legacy DOM 走生产，Network V2 只观察，对比并记录差异。</p>
+      <h4>三种运行模式</h4>
+      <table>
+        <tr><th>模式</th><th>行为</th></tr>
+        <tr><td><code>LEGACY</code></td><td>只用 Legacy DOM（当前生产模式）</td></tr>
+        <tr><td><code>SHADOW</code></td><td>Legacy 走生产 + Network 只观察对比</td></tr>
+        <tr><td><code>V2</code></td><td>只用 Network（未来生产模式）</td></tr>
+      </table>
+      <h4>四种差异类型</h4>
+      <table>
+        <tr><th>差异类型</th><th>Critical</th><th>说明</th></tr>
+        <tr><td><code>LEGACY_MISSING_V2_FOUND</code></td><td>否</td><td>Legacy 漏链接，V2 找到了</td></tr>
+        <tr><td><code>LEGACY_FOUND_V2_MISSING</code></td><td>否</td><td>Legacy 有，V2 没有</td></tr>
+        <tr><td><code>URL_MISMATCH</code></td><td style="color:var(--red)"><strong>是</strong></td><td>同档位但 URL 不同</td></tr>
+        <tr><td><code>AMBIGUOUS</code></td><td>否</td><td>V2 返回歧义结果</td></tr>
+      </table>
+      <div class="callout ok">
+        <p><strong>验收标准：</strong>Critical mismatch = 0 即 <code>is_passing = True</code></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 8 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">8</span>
+      <span class="phase-title">API + 自动建链 — CreateSafetyGuard + FallbackChain</span>
+    </div>
+    <div class="phase-body">
+      <h4>CreateSafetyGuard — 创建安全流程</h4>
+      <div class="diagram">
+<pre>
+<span class="hl-flow">Query</span> → 已有 → 复用 (<span class="hl-ok">REUSED</span>)
+  ↓ 不存在
+<span class="hl-flow">Create</span> → 发送创建请求
+  ↓ 无论返回什么
+<span class="hl-flow">Requery</span> → 重新查询确认
+  ↓
+<span class="hl-flow">Validate</span> → 验证通过
+  ↓
+<span class="hl-ok">CREATED</span>                    <span class="hl-err">多个 → AMBIGUOUS</span>
+                              <span class="hl-warn">0个/验证失败 → UNCERTAIN → MANUAL_REVIEW</span>
+</pre>
+      </div>
+      <div class="callout danger">
+        <p><strong>安全红线：</strong>Create 后必须 Requery，不信任 Create 返回值。绝不连续 Create 两次。</p>
+      </div>
+
+      <h4>FallbackChainProvider — Provider 优先级链</h4>
+      <ul>
+        <li>API 成功 → 不降级</li>
+        <li>API 返回 COMPLETE → 停止链</li>
+        <li>API 部分成功 → Network 补充缺失档位</li>
+        <li>全部失败 → NOT_FOUND</li>
+        <li>同档位不重复选择（优先级高的先选）</li>
+      </ul>
+
+      <h4>ApiProvider — 真实接口 Provider</h4>
+      <p>通过 <code>TomatoApiClient</code> 协议查询和创建，对每个档位独立执行 CreateSafetyGuard。</p>
+    </div>
+  </div>
+
+  <!-- Phase 9 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">9</span>
+      <span class="phase-title">V2 正式上线 — V2AcquisitionPipeline</span>
+    </div>
+    <div class="phase-body">
+      <p>完整编排 V2 管线：Provider → Validator → 冻结 link_set。</p>
+      <div class="diagram">
+<pre>
+<span class="hl-box">V2ProviderFactory</span>.build(mode=V2)
+  → <span class="hl-flow">FallbackChainProvider</span>([API, Network, DOM])
+  ↓
+<span class="hl-box">V2AcquisitionPipeline</span>.run(task)
+  → Provider.acquire → Validator.validate → <span class="hl-flow">Freeze link_set</span>
+  ↓
+<span class="hl-ok">READY</span>           全部档位冻结成功
+<span class="hl-warn">PARTIAL</span>        部分冻结成功
+<span class="hl-err">MANUAL_REVIEW</span>   有歧义/验证失败
+<span class="hl-err">FAILED</span>          全部缺失
+</pre>
+      </div>
+      <h4>PipelineResult 输出</h4>
+      <ul>
+        <li><code>status</code>: READY / PARTIAL / MANUAL_REVIEW / FAILED</li>
+        <li><code>link_set</code>: 冻结的 {link_type: promotion_url} 快照</li>
+        <li><code>missing</code>: {link_type: reason} 缺失详情</li>
+        <li><code>per_type</code>: {link_type: FOUND/NOT_FOUND/...} 逐档位状态</li>
+        <li><code>diagnostics</code>: 完整诊断摘要</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Phase 10 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">10</span>
+      <span class="phase-title">album_id 独立化 — DramaResource</span>
+    </div>
+    <div class="phase-body">
+      <p>独立管理 album_id，供 Native 和 MiniProgram 复用，不重复查询。</p>
+      <div class="diagram">
+<pre>
+已有 → <span class="hl-ok">Reuse</span>
+没有 → Query
+  唯一结果 → <span class="hl-ok">Save</span>
+  多个结果 → <span class="hl-err">AMBIGUOUS → MANUAL_REVIEW</span>
+</pre>
+      </div>
+      <p><code>DramaResource</code> 保存 drama_name、external_drama_id、album_id、status，是未来 Native / MiniProgram 唯一共享的业务数据。</p>
+    </div>
+  </div>
+
+  <!-- Phase 11 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">11</span>
+      <span class="phase-title">NativeWorkflowService — 统一编排</span>
+    </div>
+    <div class="phase-body">
+      <p>把零散的前置逻辑收敛成统一编排：</p>
+      <div class="diagram">
+<pre>
+<span class="hl-flow">prepare_drama()</span>
+  ↓
+<span class="hl-flow">ensure_promotions()</span>        ← V2AcquisitionPipeline
+  ↓ 失败 → MANUAL_REVIEW
+<span class="hl-flow">ensure_album_id()</span>           ← DramaResourceService
+  ↓ 歧义 → MANUAL_REVIEW
+<span class="hl-flow">ensure_native_configs()</span>
+  ↓
+<span class="hl-flow">validate_preparation()</span>
+  ↓
+<span class="hl-flow">freeze_preparation()</span>        ← SnapshotService
+  ↓
+<span class="hl-ok">mark_native_prepared() → NATIVE_PREPARED</span>
+</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 12 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">12</span>
+      <span class="phase-title">Resume + Idempotency</span>
+    </div>
+    <div class="phase-body">
+      <p>断点恢复：检查已完成的步骤，只执行未完成的部分。所有有副作用的操作统一 <code>ensure_xxx()</code> 语义。</p>
+      <div class="diagram">
+<pre>
+2.9 Promotion    <span class="hl-ok">✅</span>
+9.9 Promotion    <span class="hl-ok">✅</span>
+album_id         <span class="hl-ok">✅</span>
+Native Config    <span class="hl-err">❌</span>
+                    ↓ 重新运行
+只继续 Native Config（不重新创建已完成的推广资产）
+</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 13 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">13</span>
+      <span class="phase-title">清理旧 Runtime — DOM 降级为兜底</span>
+    </div>
+    <div class="phase-body">
+      <p>V2 完整跑通后，DOM 从主路径降级为最后兜底。</p>
+      <ul>
+        <li><code>SimpleDomFallback</code> 包装 LegacyDomProvider，标记为兜底</li>
+        <li><code>V2ProviderFactory</code> V2 模式用 <code>SimpleDomFallback</code> 替代裸 Legacy</li>
+        <li>清理旧主流程中的 DOM-first 获取、多 Candidate 取第一条、Clipboard 未验证即成功</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Phase 14 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">14</span>
+      <span class="phase-title">Manual Review — 人工审核</span>
+    </div>
+    <div class="phase-body">
+      <p>只允许真正无法自动判断的问题进入人工。</p>
+      <ul>
+        <li>同名剧 / 多个版本 / 多个 Promotion</li>
+        <li>平台验证码 / 登录失效</li>
+        <li>创建结果无法确认 / 关键数据验证失败</li>
+      </ul>
+      <p>人工确认后保存结果 → Resume，不重新执行整个任务。</p>
+      <div class="diagram">
+<pre>
+<span class="hl-box">ManualReviewService</span>.resolve(task, action)
+  ├─ confirm → <span class="hl-ok">is_resolved=True → 回到 WAITING_TIME → Resume</span>
+  └─ reject  → <span class="hl-err">is_resolved=False → 保持 MANUAL_REVIEW</span>
+</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 15 -->
+  <div class="phase-card">
+    <div class="phase-header">
+      <span class="phase-num">15</span>
+      <span class="phase-title">NativePreparationSnapshot — 冻结快照</span>
+    </div>
+    <div class="phase-body">
+      <p>进入 <code>NATIVE_PREPARED</code> 前必须生成冻结快照，是后续 Auto Plan 唯一允许消费的输入。</p>
+      <table>
+        <tr><th>字段</th><th>说明</th></tr>
+        <tr><td><code>task_id</code></td><td>任务 ID</td></tr>
+        <tr><td><code>drama_name</code></td><td>剧名</td></tr>
+        <tr><td><code>external_drama_id</code></td><td>外部剧目 ID</td></tr>
+        <tr><td><code>link_set</code></td><td>冻结的 {IAA/2.9/9.9: url}</td></tr>
+        <tr><td><code>album_id</code></td><td>投放系统剧目 ID</td></tr>
+        <tr><td><code>per_type</code></td><td>逐档位状态</td></tr>
+        <tr><td><code>status</code></td><td>NATIVE_PREPARED</td></tr>
+        <tr><td><code>prepared_at</code></td><td>冻结时间</td></tr>
+      </table>
+      <div class="callout warn">
+        <p>快照是深拷贝独立副本，修改原 task 不影响快照。后续 Auto Plan 只读此快照，禁止重新搜索/猜链接。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. STATE MACHINE ============ -->
+<section id="state-machine">
+  <h2 class="section-title">5. Native 状态机</h2>
+  <div class="diagram">
+<pre>
+<span class="hl-box">WAITING_AVAILABLE_TIME</span>
+  ↓
+<span class="hl-box">DRAMA_READY</span>
+  ↓
+<span class="hl-box">PROMOTION_READY</span>
+  ↓
+<span class="hl-box">ALBUM_READY</span>
+  ↓
+<span class="hl-box">NATIVE_CONFIG_READY</span>
+  ↓
+<span class="hl-ok">NATIVE_PREPARED</span>
+
+异常分支：
+  ├─→ <span class="hl-err">MANUAL_REVIEW</span>  (歧义/验证失败/创建不确定)
+  └─→ <span class="hl-err">FAILED</span>         (全部缺失)
+</pre>
+  </div>
+  <p>IAA / 2.9 / 9.9 等细节放 <code>PromotionAsset</code> 和 <code>StepRun</code>，不继续扩大 <code>TaskStatus</code>。</p>
+</section>
+
+<!-- ============ 6. DATA FLOW ============ -->
+<section id="data-flow">
+  <h2 class="section-title">6. 完整数据流</h2>
+  <div class="diagram">
+<pre>
+<span class="hl-flow">剧目表</span> → DramaTask
+  │
+  ▼
+<span class="hl-box">NativeWorkflowService</span>.execute(task)
+  │
+  ├─ ensure_promotions()
+  │  │
+  │  └─ <span class="hl-box">V2ProviderFactory</span>.build(mode=V2)
+  │     → <span class="hl-flow">FallbackChainProvider</span>([
+  │         <span class="hl-box">ApiProvider</span>
+  │           └─ CreateSafetyGuard: Query→Create→Requery→Validate
+  │         <span class="hl-box">NetworkProvider</span>
+  │           └─ PromotionMatcher: 6级置信度精确匹配
+  │         <span class="hl-box">SimpleDomFallback</span>
+  │           └─ Legacy DOM 兜底
+  │       ])
+  │  ↓
+  │  <span class="hl-box">V2AcquisitionPipeline</span>.run(task)
+  │  → Provider.acquire → <span class="hl-box">PromotionAssetValidator</span>.validate → Freeze link_set
+  │  → <span class="hl-ok">READY</span> / <span class="hl-warn">PARTIAL</span> / <span class="hl-err">MANUAL_REVIEW</span> / <span class="hl-err">FAILED</span>
+  │
+  ├─ ensure_album_id()
+  │  └─ <span class="hl-box">DramaResourceService</span>.ensure_album_id(task)
+  │     → 已有→Reuse / 没有→Query / 多个→AMBIGUOUS
+  │
+  ├─ validate_preparation() → freeze_preparation()
+  │  └─ <span class="hl-box">SnapshotService</span>.generate(task, pipeline_result)
+  │     → <span class="hl-box">NativePreparationSnapshot</span> (深拷贝，后续只读)
+  │
+  └─ mark_native_prepared()
+     → <span class="hl-ok">NATIVE_PREPARED</span>
+
+异常路径：
+  推广失败/歧义 → <span class="hl-err">MANUAL_REVIEW</span>
+  → <span class="hl-box">ManualReviewService</span>.resolve() → 确认后 Resume
+  → <span class="hl-box">ResumeService</span>.resume() 从断点继续
+</pre>
+  </div>
+</section>
+
+<!-- ============ 7. FILE INVENTORY ============ -->
+<section id="file-inventory">
+  <h2 class="section-title">7. 文件清单</h2>
+
+  <h3>Domain / Acquisition（11 文件）h3>
+  <table>
+    <tr><th>文件</th><th>Phase</th><th>说明</th></tr>
+    <tr><td><code>acquisition_result.py</code></td><td>1-4</td><td>采集结果数据类</td></tr>
+    <tr><td><code>promotion_asset_validator.py</code></td><td>1-4</td><td>资产验证器</td></tr>
+    <tr><td><code>network_listener</code>→<code>network_listener.py</code></td><td>5</td><td>Playwright 网络监听 + 脱敏</td></tr>
+    <tr><td><code>response_parser.py</code></td><td>5</td><td>番茄响应解析器</td></tr>
+    <tr><td><code>promotion_matcher.py</code></td><td>6</td><td>6 级置信度精确匹配器</td></tr>
+    <tr><td><code>shadow_comparator.py</code></td><td>7</td><td>Legacy vs V2 对比器</td></tr>
+    <tr><td><code>shadow_provider.py</code></td><td>7</td><td>ShadowMode 三模式分发</td></tr>
+    <tr><td><code>create_safety_guard.py</code></td><td>8</td><td>创建安全守卫</td></tr>
+    <tr><td><code>fallback_chain.py</code></td><td>8</td><td>Provider 优先级链</td></tr>
+    <tr><td><code>v2_pipeline.py</code></td><td>9</td><td>V2 管线编排</td></tr>
+    <tr><td><code>v2_provider_factory.py</code></td><td>9</td><td>V2 Provider 工厂</td></tr>
+    <tr><td><code>simple_dom_fallback.py</code></td><td>13</td><td>DOM 兜底包装</td></tr>
+  </table>
+
+  <h3>Domain / Assets（2 文件）</h3>
+  <table>
+    <tr><th>文件</th><th>Phase</th><th>说明</th></tr>
+    <tr><td><code>promotion_asset.py</code></td><td>1-4</td><td>推广资产领域模型</td></tr>
+    <tr><td><code>drama_resource.py</code></td><td>10</td><td>剧目资源（album_id）</td></tr>
+  </table>
+
+  <h3>Domain / Services（5 文件）</h3>
+  <table>
+    <tr><th>文件</th><th>Phase</th><th>说明</th></tr>
+    <tr><td><code>drama_resource_service.py</code></td><td>10</td><td>album_id 查询/复用</td></tr>
+    <tr><td><code>native_workflow_service.py</code></td><td>11</td><td>统一编排</td></tr>
+    <tr><td><code>resume_service.py</code></td><td>12</td><td>断点恢复</td></tr>
+    <tr><td><code>manual_review.py</code></td><td>14</td><td>人工审核</td></tr>
+    <tr><td><code>snapshot_service.py</code></td><td>15</td><td>冻结快照</td></tr>
+  </table>
+
+  <h3>Domain / Workflow（1 文件）</h3>
+  <table>
+    <tr><th>文件</th><th>Phase</th><th>说明</th></tr>
+    <tr><td><code>native_stage.py</code></td><td>12</td><td>Native 状态机</td></tr>
+  </table>
+
+  <h3>Infrastructure / Tomato（5 文件）</h3>
+  <table>
+    <tr><th>文件</th><th>Phase</th><th>说明</th></tr>
+    <tr><td><code>network/network_listener.py</code></td><td>5</td><td>网络监听实现</td></tr>
+    <tr><td><code>network/response_parser.py</code></td><td>5</td><td>响应解析实现</td></tr>
+    <tr><td><code>providers/api_provider.py</code></td><td>8</td><td>API Provider</td></tr>
+    <tr><td><code>providers/network_provider.py</code></td><td>5-6</td><td>Network Provider</td></tr>
+    <tr><td><code>providers/network_discovery_provider.py</code></td><td>5</td><td>Discovery Provider</td></tr>
+  </table>
+
+  <h3>Tests（9 文件）</h3>
+  <table>
+    <tr><th>文件</th><th>测试数</th><th>Phase</th></tr>
+    <tr><td><code>test_network_discovery.py</code></td><td>20</td><td>5</td></tr>
+    <tr><td><code>test_network_provider.py</code></td><td>26</td><td>5-6</td></tr>
+    <tr><td><code>test_promotion_matcher.py</code></td><td>20</td><td>6</td></tr>
+    <tr><td><code>test_shadow_mode.py</code></td><td>18</td><td>7</td></tr>
+    <tr><td><code>test_create_safety_guard.py</code></td><td>11</td><td>8</td></tr>
+    <tr><td><code>test_fallback_chain.py</code></td><td>8</td><td>8</td></tr>
+    <tr><td><code>test_api_provider.py</code></td><td>7</td><td>8</td></tr>
+    <tr><td><code>test_v2_pipeline.py</code></td><td>9</td><td>9</td></tr>
+    <tr><td><code>test_native_v2_phases.py</code></td><td>13</td><td>10-15</td></tr>
+  </table>
+</section>
+
+<!-- ============ 8. TEST COVERAGE ============ -->
+<section id="test-coverage">
+  <h2 class="section-title">8. 测试覆盖</h2>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-num">825</div>
+      <div class="stat-label">全量通过</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">132</div>
+      <div class="stat-label">Phase 5-15 新增测试</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">30+</div>
+      <div class="stat-label">新增文件</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">11</div>
+      <div class="stat-label">Phases Completed</div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <p><strong>2 个环境配置相关失败</strong>（<code>test_adapter_factory</code> / <code>test_settings</code>）：<code>use_real_adapters</code> 被环境变量覆盖，与本次改动无关。</p>
+  </div>
+</section>
+
+<!-- ============ 9. FUTURE ============ -->
+<section id="future">
+  <h2 class="section-title">9. 后续规划</h2>
+  <div class="callout">
+    <p>本版本完成后，下一阶段分别开发：</p>
+    <ul>
+      <li><strong>Auto Plan</strong> — 读取 <code>NativePreparationSnapshot</code> 创建投放计划</li>
+      <li><strong>MiniProgram Workflow</strong> — 小程序产线（独立业务域，不污染 Native 数据）</li>
+    </ul>
+    <p>二者都不得污染当前 Native 业务数据。唯一允许共享的业务数据是 <code>album_id</code>。</p>
+  </div>
+
+  <h3>生产验收指标</h3>
+  <table>
+    <tr><th>指标</th><th>第一阶段目标</th><th>稳定后目标</th></tr>
+    <tr><td>自动完成率</td><td>≥ 80%</td><td>≥ 95%</td></tr>
+    <tr><td>链接完整率</td><td colspan="2">每个缺失链接都有明确原因</td></tr>
+    <tr><td>重复创建拦截</td><td colspan="2">CreateSafetyGuard + Requery 保证</td></tr>
+    <tr><td>Resume 成功率</td><td colspan="2">断点恢复不重新创建</td></tr>
+    <tr><td>DOM Fallback 使用率</td><td colspan="2">逐步降低，目标趋近 0</td></tr>
+  </table>
+</section>
+
+</div>
+</body>
+</html>

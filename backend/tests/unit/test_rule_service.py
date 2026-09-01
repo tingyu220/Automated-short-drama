@@ -8,6 +8,7 @@ import pytest
 from backend.application.services.rule_service import (
     create_config_snapshot,
     create_draft,
+    delete_version,
     list_versions,
     log_change,
     publish_version,
@@ -105,6 +106,15 @@ class FakeRuleRepository:
     def list_rule_versions(self, rule_set_id: str) -> list[RuleVersion]:
         return [v for v in self.versions.values() if v.rule_set_id == rule_set_id]
 
+    def get_rule_version(self, version_id: str) -> RuleVersion | None:
+        return self.versions.get(version_id)
+
+    def delete_rule_version(self, version_id: str) -> bool:
+        if version_id not in self.versions:
+            return False
+        del self.versions[version_id]
+        return True
+
     def append_change_log(self, log: ConfigChangeLog) -> ConfigChangeLog:
         self.change_logs.append(log)
         return log
@@ -118,6 +128,18 @@ class FakePriceRepository:
 
     def list_template_price_rules(self) -> list[TemplatePriceRule]:
         return self.rules
+
+    def upsert_template_price_rule(self, rule: TemplatePriceRule) -> None:
+        existing = next((r for r in self.rules if r.key == rule.key), None)
+        if existing:
+            self.rules = [rule if r.key == rule.key else r for r in self.rules]
+        else:
+            self.rules.append(rule)
+
+    def replace_template_price_rules(
+        self, rules: list[TemplatePriceRule]
+    ) -> None:
+        self.rules = list(rules)
 
 
 class FakeMaterialRepository:
@@ -254,52 +276,65 @@ class TestValidateRule:
         assert repo.versions[version.id] is version
 
     def test_validate_invalid_price_raises(self):
-        repo = self._repo_with_draft()
-        price_repo = FakePriceRepository(
-            [
-                TemplatePriceRule(
-                    id="p1",
-                    key="bad",
-                    target_price=10.0,
-                    min_price=2.6,
-                    max_price=5.0,
-                )
-            ]
+        # 草稿 payload 中包含非法价格规则（target 超出区间）
+        rule_set = _rule_set()
+        version = _draft_version(
+            payload={
+                "price_rules": [
+                    {
+                        "key": "bad",
+                        "target_price": 10.0,
+                        "min_price": 2.6,
+                        "max_price": 5.0,
+                    }
+                ]
+            }
+        )
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={version.id: version},
         )
 
         with pytest.raises(ValidationError):
-            validate_rule(repo, price_repo, self._valid_material_repo(), "rs-1")
+            validate_rule(repo, self._valid_price_repo(), self._valid_material_repo(), "rs-1")
         assert len(repo.versions) == 1, "校验失败时不应新增版本"
 
     def test_validate_overlapping_material_ranges_raises(self):
-        repo = self._repo_with_draft()
-        material_repo = FakeMaterialRepository(
-            [
-                MaterialRuleRange(
-                    id="m1",
-                    min_material_count=0,
-                    max_material_count=30,
-                    strategy="S",
-                    base_group_count=1,
-                    copy_count=2,
-                    group_size_cap=30,
-                    target_project_count=3,
-                ),
-                MaterialRuleRange(
-                    id="m2",
-                    min_material_count=20,
-                    max_material_count=50,
-                    strategy="S",
-                    base_group_count=2,
-                    copy_count=2,
-                    group_size_cap=30,
-                    target_project_count=3,
-                ),
-            ]
+        # 草稿 payload 中包含重叠的素材区间
+        rule_set = _rule_set()
+        version = _draft_version(
+            payload={
+                "material_ranges": [
+                    {
+                        "key": "m1",
+                        "min_material_count": 0,
+                        "max_material_count": 30,
+                        "strategy": "S",
+                        "base_group_count": 1,
+                        "copy_count": 2,
+                        "group_size_cap": 30,
+                        "target_project_count": 3,
+                    },
+                    {
+                        "key": "m2",
+                        "min_material_count": 20,
+                        "max_material_count": 50,
+                        "strategy": "S",
+                        "base_group_count": 2,
+                        "copy_count": 2,
+                        "group_size_cap": 30,
+                        "target_project_count": 3,
+                    },
+                ]
+            }
+        )
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={version.id: version},
         )
 
         with pytest.raises(ValidationError):
-            validate_rule(repo, self._valid_price_repo(), material_repo, "rs-1")
+            validate_rule(repo, self._valid_price_repo(), self._valid_material_repo(), "rs-1")
 
     def test_validate_missing_draft_raises_not_found(self):
         rule_set = _rule_set()
@@ -603,6 +638,74 @@ class TestListVersions:
         versions = list_versions(repo, "rs-1")
 
         assert [v.version for v in versions] == ["2", "1"]
+
+
+class TestDeleteVersion:
+    """delete_version 测试."""
+
+    def test_delete_draft_version_success(self):
+        rule_set = _rule_set()
+        version = _draft_version(version="1", version_id="rv-1")
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={version.id: version},
+        )
+
+        result = delete_version(repo, rule_set.id, version.id, actor="tester")
+
+        assert result is True
+        assert version.id not in repo.versions
+        assert len(repo.change_logs) == 1
+        assert repo.change_logs[0].action == "DELETE_VERSION"
+        assert repo.change_logs[0].from_version == "1"
+
+    def test_delete_validating_version_success(self):
+        rule_set = _rule_set()
+        version = RuleVersion(
+            id="rv-1",
+            rule_set_id=rule_set.id,
+            version="2",
+            status=RuleVersionStatus.VALIDATING,
+            payload_json={},
+        )
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={version.id: version},
+        )
+
+        result = delete_version(repo, rule_set.id, version.id)
+
+        assert result is True
+        assert version.id not in repo.versions
+
+    def test_delete_published_version_success(self):
+        rule_set = _rule_set()
+        version = RuleVersion(
+            id="rv-1",
+            rule_set_id=rule_set.id,
+            version="1",
+            status=RuleVersionStatus.PUBLISHED,
+            payload_json={},
+        )
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={version.id: version},
+        )
+
+        result = delete_version(repo, rule_set.id, version.id)
+
+        assert result is True
+        assert version.id not in repo.versions
+
+    def test_delete_missing_version_raises_not_found(self):
+        rule_set = _rule_set()
+        repo = FakeRuleRepository(
+            rule_sets={rule_set.id: rule_set},
+            versions={},
+        )
+
+        with pytest.raises(NotFoundError):
+            delete_version(repo, rule_set.id, "nonexistent")
 
 
 class TestCreateConfigSnapshot:

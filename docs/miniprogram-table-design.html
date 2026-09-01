@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小程序剧目表结构设计</title>
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; padding: 24px; background: #f8fafc; color: #1e293b; }
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  h2 { font-size: 16px; margin-top: 24px; margin-bottom: 8px; color: #475569; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; background: white; border-radius: 8px; overflow: hidden; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+  th { background: #f1f5f9; font-weight: 600; color: #475569; }
+  .fixed { color: #059669; font-weight: 500; }
+  .derived { color: #7c3aed; }
+  .dynamic { color: #dc2626; }
+  .group-header td { background: #e0e7ff; font-weight: 600; color: #3730a3; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .example { background: #ecfdf5; border-left: 4px solid #059669; padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>小程序剧目表结构设计（Sheet: 2NgJYM）</h1>
+<p>根据用户描述的完整小程序投放流程设计，一行 = 一部剧 + 一个价格档位。</p>
+
+<div class="note">
+  <strong>设计原则：</strong>
+  <ul>
+    <li>一部剧两个档位（2.9 / 9.9）= 两行数据</li>
+    <li>固定配置（小程序信息、主体、渠道等）在每行重复，便于筛选和独立操作</li>
+    <li>从剧目表（a8d032）读取基础信息后补充小程序专属字段</li>
+  </ul>
+</div>
+
+<h2>完整列定义</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>列</th>
+      <th>字段名</th>
+      <th>中文标题</th>
+      <th>类型</th>
+      <th>示例值</th>
+      <th>说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="group-header"><td colspan="6">基础信息（从剧目表 a8d032 读取）</td></tr>
+    <tr>
+      <td>A</td><td>drama_name</td><td>剧名</td>
+      <td class="dynamic">动态</td>
+      <td>悍妇儿媳掌全局</td>
+      <td>完整剧名，从剧目表读取</td>
+    </tr>
+    <tr>
+      <td>B</td><td>operator_name</td><td>投手</td>
+      <td class="dynamic">动态</td>
+      <td>田雨</td>
+      <td>从剧目表读取</td>
+    </tr>
+    <tr>
+      <td>C</td><td>operator_code</td><td>投手编码</td>
+      <td class="derived">派生</td>
+      <td>TY</td>
+      <td>中文姓名→拼音首字母大写，自动生成</td>
+    </tr>
+    <tr>
+      <td>D</td><td>organization_group</td><td>归属组织</td>
+      <td class="dynamic">动态</td>
+      <td>测试组B</td>
+      <td>从剧目表读取，用于巨量平台选择归属</td>
+    </tr>
+    <tr>
+      <td>E</td><td>organization_path</td><td>组织路径</td>
+      <td class="dynamic">动态</td>
+      <td>投放部/测试组B</td>
+      <td>层级路径，用于巨量平台按层级选择</td>
+    </tr>
+    <tr>
+      <td>F</td><td>price_tier</td><td>价格档位</td>
+      <td class="dynamic">动态</td>
+      <td>2.9</td>
+      <td>2.9 或 9.9，每档一行</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">投放系统信息</td></tr>
+    <tr>
+      <td>G</td><td>album_id</td><td>专辑ID</td>
+      <td class="dynamic">动态</td>
+      <td>7679341938168105086</td>
+      <td>从投放系统剧目资源中心获取</td>
+    </tr>
+    <tr>
+      <td>H</td><td>drama_short_name</td><td>剧名缩写</td>
+      <td class="derived">派生/人工</td>
+      <td>悍妇儿媳</td>
+      <td>大于5字缩写，尽量靠前取好记</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">小程序固定配置（乐珍剧场）</td></tr>
+    <tr>
+      <td>I</td><td>mini_program_app_id</td><td>小程序AppID</td>
+      <td class="fixed">固定</td>
+      <td>wx10501bcb2a609cd1</td>
+      <td>乐珍剧场小程序</td>
+    </tr>
+    <tr>
+      <td>J</td><td>mini_program_original_id</td><td>小程序原始ID</td>
+      <td class="fixed">固定</td>
+      <td>gh_377357577040</td>
+      <td>用于巨量平台添加资产</td>
+    </tr>
+    <tr>
+      <td>K</td><td>mini_program_name</td><td>小程序名称</td>
+      <td class="fixed">固定</td>
+      <td>乐珍剧场</td>
+      <td>用于巨量平台添加资产</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">推广链接信息（优选平台创建后获取）</td></tr>
+    <tr>
+      <td>L</td><td>promotion_title</td><td>推广标题</td>
+      <td class="derived">派生</td>
+      <td>TY-悍妇儿媳掌全局-2.9</td>
+      <td>格式：{投手编码}-{剧名}-{档位}</td>
+    </tr>
+    <tr>
+      <td>M</td><td>mini_program_path</td><td>小程序路径</td>
+      <td class="dynamic">动态</td>
+      <td>pages/play/index?id=xxx</td>
+      <td>从推广链接复制获取</td>
+    </tr>
+    <tr>
+      <td>N</td><td>mini_program_link</td><td>小程序链接</td>
+      <td class="dynamic">动态</td>
+      <td>https://channels...?</td>
+      <td>从推广链接复制获取</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">充值模板信息</td></tr>
+    <tr>
+      <td>O</td><td>recharge_template</td><td>充值模板</td>
+      <td class="fixed">固定/档位</td>
+      <td>A测－2.9元看全集（含周代</td>
+      <td>2.9→A测－2.9元看全集（含周代</td>
+    </tr>
+    <tr>
+      <td>P</td><td>product_library</td><td>商品库名称</td>
+      <td class="fixed">固定/档位</td>
+      <td>抖小iap-2.9</td>
+      <td>2.9→抖小iap-2.9，9.9→抖小iap-9.9</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">巨量平台固定配置</td></tr>
+    <tr>
+      <td>Q</td><td>ocean_subject</td><td>巨量主体</td>
+      <td class="fixed">固定</td>
+      <td>厦门夜洛缭绕科技有限公司</td>
+      <td>巨量平台选择主体</td>
+    </tr>
+    <tr>
+      <td>R</td><td>copyright_owner</td><td>版权方主体</td>
+      <td class="fixed">固定</td>
+      <td>夜洛缭绕</td>
+      <td>商品库版权方输入</td>
+    </tr>
+    <tr>
+      <td>S</td><td>category_level_1</td><td>剧目分类1</td>
+      <td class="fixed">固定</td>
+      <td>其他剧情</td>
+      <td>巨量平台分类</td>
+    </tr>
+    <tr>
+      <td>T</td><td>category_level_2</td><td>剧目分类2</td>
+      <td class="fixed">固定</td>
+      <td>其他</td>
+      <td>巨量平台分类</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">推广配置固定信息</td></tr>
+    <tr>
+      <td>U</td><td>landing_channel</td><td>落地渠道</td>
+      <td class="fixed">固定</td>
+      <td>微信小程序</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>V</td><td>monetization_type</td><td>变现类型</td>
+      <td class="fixed">固定</td>
+      <td>IAP</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>W</td><td>promotion_channel</td><td>推广渠道</td>
+      <td class="fixed">固定</td>
+      <td>巨量-资产化</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>X</td><td>unlock_type</td><td>解锁类型</td>
+      <td class="fixed">固定</td>
+      <td>充值解锁</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>Y</td><td>callback_template</td><td>回传模板</td>
+      <td class="fixed">固定</td>
+      <td>默认3:1</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>Z</td><td>charge_type</td><td>收费类型</td>
+      <td class="fixed">固定</td>
+      <td>每集固定价格</td>
+      <td>-</td>
+    </tr>
+
+    <tr class="group-header"><td colspan="6">备注与状态</td></tr>
+    <tr>
+      <td>AA</td><td>remark_name</td><td>备注名</td>
+      <td class="derived">派生</td>
+      <td>TY悍妇儿媳-2.9</td>
+      <td>格式：{投手编码}{剧名缩写}-{档位}</td>
+    </tr>
+    <tr>
+      <td>AB</td><td>workflow_status</td><td>工作流状态</td>
+      <td class="dynamic">动态</td>
+      <td>NOT_STARTED</td>
+      <td>NOT_STARTED → CONTEXT_READY → DISCOVERY_READY → READY_FOR_IMPLEMENTATION</td>
+    </tr>
+    <tr>
+      <td>AC</td><td>created_at</td><td>创建时间</td>
+      <td class="derived">派生</td>
+      <td>2026-09-01 10:00</td>
+      <td>UTC时间</td>
+    </tr>
+    <tr>
+      <td>AD</td><td>updated_at</td><td>更新时间</td>
+      <td class="derived">派生</td>
+      <td>2026-09-01 10:30</td>
+      <td>UTC时间</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>示例数据（2行 = 1部剧 × 2个档位）</h2>
+
+<div class="example">
+  <strong>示例1：悍妇儿媳掌全局 / 田雨 / 2.9</strong><br>
+  剧名: 悍妇儿媳掌全局 | 投手: 田雨 | 投手编码: TY | 归属组织: 测试组B | 组织路径: 投放部/测试组B<br>
+  价格档位: 2.9 | 专辑ID: (待获取) | 剧名缩写: 悍妇儿媳<br>
+  小程序AppID: wx10501bcb2a609cd1 | 小程序原始ID: gh_377357577040 | 小程序名称: 乐珍剧场<br>
+  推广标题: TY-悍妇儿媳掌全局-2.9 | 小程序路径: (待创建) | 小程序链接: (待创建)<br>
+  充值模板: A测－2.9元看全集（含周代 | 商品库: 抖小iap-2.9<br>
+  巨量主体: 厦门夜洛缭绕科技有限公司 | 版权方: 夜洛缭绕 | 分类: 其他剧情/其他<br>
+  落地渠道: 微信小程序 | 变现类型: IAP | 推广渠道: 巨量-资产化 | 解锁类型: 充值解锁 | 回传模板: 默认3:1 | 收费类型: 每集固定价格<br>
+  备注名: TY悍妇儿媳-2.9 | 状态: NOT_STARTED
+</div>
+
+<div class="example">
+  <strong>示例2：悍妇儿媳掌全局 / 田雨 / 9.9</strong><br>
+  剧名: 悍妇儿媳掌全局 | 投手: 田雨 | 投手编码: TY | 归属组织: 测试组B | 组织路径: 投放部/测试组B<br>
+  价格档位: 9.9 | 专辑ID: (同上) | 剧名缩写: 悍妇儿媳<br>
+  小程序AppID: wx10501bcb2a609cd1 | 小程序原始ID: gh_377357577040 | 小程序名称: 乐珍剧场<br>
+  推广标题: TY-悍妇儿媳掌全局-9.9 | 小程序路径: (待创建) | 小程序链接: (待创建)<br>
+  充值模板: A测－lw超低10看全集（含周代 | 商品库: 抖小iap-9.9<br>
+  巨量主体: 厦门夜洛缭绕科技有限公司 | 版权方: 夜洛缭绕 | 分类: 其他剧情/其他<br>
+  落地渠道: 微信小程序 | 变现类型: IAP | 推广渠道: 巨量-资产化 | 解锁类型: 充值解锁 | 回传模板: 默认3:1 | 收费类型: 每集固定价格<br>
+  备注名: TY悍妇儿媳-9.9 | 状态: NOT_STARTED
+</div>
+
+<h2>字段颜色说明</h2>
+<table>
+  <tr><td class="fixed">固定</td><td>所有剧都一样的值（如小程序AppID、巨量主体等）</td></tr>
+  <tr><td class="derived">派生</td><td>从其他字段自动计算（如投手编码、推广标题、备注名）</td></tr>
+  <tr><td class="dynamic">动态</td><td>每部剧不同，需要人工或系统获取（如剧名、专辑ID、小程序路径）</td></tr>
+</table>
+
+</body>
+</html>

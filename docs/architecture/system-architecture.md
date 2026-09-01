@@ -119,7 +119,7 @@ Repository 接口在 Application `ports` 中声明，由 Infrastructure 实现�
 | `QueueRepository` | `enqueue`、`claim`、`heartbeat`、`release`、`list_active` | `QueueItem` |
 | `WorkflowRepository` | `start_run`、`record_step`、`finish_run` | `WorkflowRun`、`StepRun` |
 | `LedgerRepository` | `append`、`find_by_task` | `TaskLedger` |
-| `LinkRepository` | `save_link`、`get_by_task`、`find_duplicate` | `PromotionLinkSet` |
+| `PromotionAssetRepository` | `save_all`、`list_by_task`、`find_by_identity`、`find_validated_by_task` | `PromotionAsset` |
 | `AssetRepository` | `find_by_drama_album`、`save` | `DramaAsset` |
 | `PlanSpecRepository` | `save`、`get_latest` | `PlanSpec` |
 | `AccountRepository` | `save_usage`、`save_snapshot`、`save_allocation`、`find_allocation` | `AccountUsageRecord`、`AccountSheetSnapshot`、`AccountAllocation` |
@@ -147,6 +147,11 @@ Adapter 接口在 Application `ports` 中声明，由 Platforms 实现。接口�
 - `extract_iaa(task)`：免费入口提取 IAA 链接；
 - `extract_iap(task)`：付费入口扫描模板，提取 9.9/2.9 链接；
 - `ensure_session()`：维护登录态与持久化 Session。
+
+番茄链接获取由 `LinkAcquisitionService` 统一编排。当前 Provider 顺序只有
+`LegacyDomProvider`，它包装既有 Tomato Adapter 与 Page Object；后续 Network/API
+只能作为新 Provider 接入，不能把网络协议细节写入任务准备服务。采集得到的候选先写入
+`PromotionAsset`，只有唯一且验证通过的资产才能冻结到 `DramaTask.link_set`。
 
 ### 7.3 DeliverySystemAdapter
 

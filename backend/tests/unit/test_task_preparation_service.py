@@ -46,6 +46,15 @@ class MemoryQueueRepo:
         return [item for item in self.items.values() if item.task_id == task_id]
 
 
+class MemoryPromotionAssetRepo:
+    def __init__(self):
+        self.items = []
+
+    def save_all(self, assets):
+        self.items.extend(assets)
+        return assets
+
+
 class RecordingFeishu:
     def __init__(self, tasks):
         self.tasks = tasks
@@ -90,6 +99,26 @@ def test_prepare_tomato_freezes_links_writes_back_and_enqueues():
     assert feishu.writes[0][0] == "2"
     assert len(queue.items) == 1
     assert next(iter(queue.items.values())).state == QueueState.WAITING_TIME
+
+
+def test_prepare_tomato_persists_promotion_assets() -> None:
+    task = _task()
+    assets = MemoryPromotionAssetRepo()
+    tasks = MemoryTaskRepo()
+    service = TaskPreparationService(
+        RecordingFeishu([task]),
+        MockTomatoAdapter(),
+        tasks,
+        MemoryQueueRepo(),
+        price_rules=[],
+        promotion_asset_repo=assets,
+    )
+
+    result = service.prepare_task(task, dry_run=True, now=task.available_time)
+
+    assert result.status == READY
+    assert [asset.link_type for asset in assets.items] == ["IAA"]
+    assert assets.items[0].promotion_url == tasks.get(task.id).link_set["IAA"]
 
 
 def test_prepare_tomato_uses_real_episode_count_for_iaa_selection():
@@ -148,7 +177,7 @@ def test_prepare_normalizes_naive_persisted_time_before_tomato_calls():
     assert tomato.seen == [datetime(2026, 8, 8, 10, tzinfo=timezone.utc)]
 
 
-def test_special_length_links_are_written_but_sent_to_manual_review():
+def test_special_length_links_are_recorded_but_not_frozen_or_written():
     class SpecialLengthTomato(MockTomatoAdapter):
         def extract_iaa_link(self, *args, **kwargs):
             return PromotionLink(
@@ -171,10 +200,10 @@ def test_special_length_links_are_written_but_sent_to_manual_review():
     )
 
     assert result.status == MANUAL_REVIEW
-    assert result.failure_code == "SPECIAL_LENGTH"
-    assert tasks.items["2"].link_status == "SPECIAL_LENGTH"
-    assert tasks.items["2"].link_set == {"IAA": "x" * 500}
-    assert feishu.writes == [("2", {"IAA": "x" * 500})]
+    assert result.failure_code == "LINK_VALIDATION_FAILED"
+    assert tasks.items["2"].link_status == "FAILED"
+    assert tasks.items["2"].link_set == {}
+    assert feishu.writes == []
     assert queue.items == {}
 
 

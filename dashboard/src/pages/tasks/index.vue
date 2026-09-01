@@ -27,6 +27,7 @@ import { useQueueStore } from "@/app/stores/queue"
 import { useSystemStore } from "@/app/stores/system"
 import { useRecordsStore } from "@/app/stores/records"
 import { useTaskStore } from "@/app/stores/task"
+import { useMiniprogramStore } from "@/app/stores/miniprogram"
 import type { DramaImportPreview } from "@/entities/drama-import/types"
 import { getPlatformLabel, getStatusLabel } from "@/shared/utils/status"
 import {
@@ -40,6 +41,7 @@ const taskStore = useTaskStore()
 const queueStore = useQueueStore()
 const systemStore = useSystemStore()
 const recordsStore = useRecordsStore()
+const miniprogramStore = useMiniprogramStore()
 const route = useRoute()
 
 const TERMINAL_QUEUE_STATES = ["COMPLETED", "CANCELLED", "DRY_RUN"]
@@ -110,28 +112,48 @@ const detailTask = computed<TaskView | null>(() =>
   taskStore.detail ? toTaskView(taskStore.detail) : null
 )
 
+const miniprogramTasksAsViews = computed<TaskView[]>(() =>
+  miniprogramStore.tasks.map((t) => ({
+    id: t.task_id,
+    drama_name: t.drama_name,
+    platform: "MINIPROGRAM",
+    status: t.workflow_status === "NOT_STARTED" ? "READY" : t.workflow_status,
+    end_type: "MINIPROGRAM",
+    owner: t.operator_name,
+    operator_name: t.operator_name,
+    queue_state: null,
+    link_readiness_stage: null,
+    available_time: t.created_at,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    exception: null,
+    source_key: null,
+    retry_count: 0,
+    album_id: t.album_id,
+  } as unknown as TaskView))
+)
+
 const filteredTasks = computed(() => {
   const q = searchQ.value.trim().toLowerCase()
-  return taskStore.tasks
-    .map((task) => toTaskView(task))
-    .filter((task) => {
-      if (platform.value && task.platform !== platform.value) return false
-      if (status.value && task.status !== status.value) return false
-      if (
-        exceptionFilter.value === "has" &&
-        !["MANUAL_REVIEW", "FAILED"].includes(task.status)
-      ) {
-        return false
-      }
-      if (
-        exceptionFilter.value === "none" &&
-        ["MANUAL_REVIEW", "FAILED"].includes(task.status)
-      ) {
-        return false
-      }
-      if (q && !task.drama_name.toLowerCase().includes(q)) return false
-      return true
-    })
+  const source = isMiniprogram.value ? miniprogramTasksAsViews.value : taskStore.tasks.map((task) => toTaskView(task))
+  return source.filter((task) => {
+    if (platform.value && task.platform !== platform.value) return false
+    if (status.value && task.status !== status.value) return false
+    if (
+      exceptionFilter.value === "has" &&
+      !["MANUAL_REVIEW", "FAILED"].includes(task.status)
+    ) {
+      return false
+    }
+    if (
+      exceptionFilter.value === "none" &&
+      ["MANUAL_REVIEW", "FAILED"].includes(task.status)
+    ) {
+      return false
+    }
+    if (q && !task.drama_name.toLowerCase().includes(q)) return false
+    return true
+  })
 })
 
 const pagedTasks = computed(() =>
@@ -142,6 +164,14 @@ const pagedTasks = computed(() =>
 )
 
 async function loadAll() {
+  if (isMiniprogram.value) {
+    await Promise.all([
+      miniprogramStore.fetchTasks(),
+      queueStore.fetchQueue(),
+      systemStore.fetchHealth()
+    ])
+    return
+  }
   await Promise.all([
     taskStore.fetchTasks({
       date: date.value,
@@ -190,6 +220,17 @@ async function createMiniprogramTask() {
   ElMessage.success(`已创建任务「${name}」`)
   newDramaName.value = ""
   await loadAll()
+}
+
+async function syncFromFeishu() {
+  const ok = await miniprogramStore.syncTasks()
+  if (ok && miniprogramStore.syncResult) {
+    const r = miniprogramStore.syncResult
+    ElMessage.success(`同步完成：新增 ${r.created} 更新 ${r.updated} 跳过 ${r.skipped}`)
+    await loadAll()
+  } else {
+    ElMessage.error("同步失败，请检查后端和飞书连接")
+  }
 }
 
 onMounted(async () => {
@@ -473,7 +514,7 @@ async function enqueueImportedTasks(taskIds: string[]) {
       title="自动搭链接"
       :subtitle="isMiniprogram
         ? '微信小程序产线：在 youxuan2 平台搭建链接'
-        : '端原生漫剧产线：番茄后台提取链接 + 投放系统搭建'"
+        : '端原生产线：番茄/剧变平台提取链接 + 投放系统搭建'"
     />
 
     <div class="production-line-tabs">
@@ -498,6 +539,10 @@ async function enqueueImportedTasks(taskIds: string[]) {
       <ElButton type="primary" :loading="taskStore.loading" @click="createMiniprogramTask">
         <el-icon><Plus /></el-icon>
         创建任务
+      </ElButton>
+      <ElButton :loading="miniprogramStore.syncing" @click="syncFromFeishu">
+        <el-icon><Upload /></el-icon>
+        从飞书获取剧目
       </ElButton>
     </section>
 

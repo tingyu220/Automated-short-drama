@@ -7,12 +7,19 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
 
-from backend.application.services.tomato_extraction_service import scan_iap
+from backend.application.services.link_acquisition_service import (
+    LinkAcquisitionService,
+    NullPromotionAssetRepository,
+)
+from backend.domain.acquisition.promotion_asset_validator import (
+    PromotionAssetValidator,
+)
 from backend.domain.common.timezones import as_utc
 from backend.domain.errors.domain_error import DramaMismatchError
 from backend.domain.queue.queue_item import QueueItem, QueueState
 from backend.domain.tasks.drama_task import DramaTask, TaskStatus
 from backend.domain.tasks.end_type import EndType
+from backend.platforms.tomato.providers.legacy_dom_provider import LegacyDomProvider
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +54,7 @@ class ResolvedLinks:
     links: dict[str, str]
     iap_failures: list[dict[str, str]] = field(default_factory=list)
     diag: dict[str, Any] = field(default_factory=dict)
+    failure_code: str | None = None
 
 
 def _build_details(resolved: ResolvedLinks) -> dict[str, Any]:
@@ -62,13 +70,29 @@ def _build_details(resolved: ResolvedLinks) -> dict[str, Any]:
 class TaskPreparationService:
     """把飞书当天剧目变成已冻结链接的可执行任务。"""
 
-    def __init__(self, feishu, tomato, task_repo, queue_repo, *, price_rules, youxuan=None):
+    def __init__(
+        self,
+        feishu,
+        tomato,
+        task_repo,
+        queue_repo,
+        *,
+        price_rules,
+        youxuan=None,
+        promotion_asset_repo=None,
+        link_acquisition=None,
+    ):
         self._feishu = feishu
         self._tomato = tomato
         self._task_repo = task_repo
         self._queue_repo = queue_repo
         self._price_rules = price_rules
         self._youxuan = youxuan
+        self._link_acquisition = link_acquisition or LinkAcquisitionService(
+            LegacyDomProvider(tomato, price_rules),
+            PromotionAssetValidator(),
+            promotion_asset_repo or NullPromotionAssetRepository(),
+        )
 
     def prepare(
         self,
@@ -145,13 +169,13 @@ class TaskPreparationService:
             self._save(task, existing)
             return PreparationOutcome(
                 MANUAL_REVIEW,
-                failure_code="NO_LINKS",
+                failure_code=resolved.failure_code or "NO_LINKS",
             )
 
         link_status = _resolved_link_status(resolved.links)
         task.link_set = resolved.links
         task.confirmed_drama_match = None
-        if link_status == "SPECIAL_LENGTH":
+        if link_status == "INVALID_URL":
             task.status = TaskStatus.MANUAL_REVIEW
             task.link_status = link_status
             if source.platform == "TOMATO" and not dry_run:
@@ -159,7 +183,7 @@ class TaskPreparationService:
             self._save(task, existing)
             return PreparationOutcome(
                 MANUAL_REVIEW,
-                failure_code="SPECIAL_LENGTH",
+                failure_code="INVALID_URL",
             )
         task.link_status = "VALIDATED"
         task.status = TaskStatus.READY
@@ -182,52 +206,32 @@ class TaskPreparationService:
         if task.platform != "TOMATO":
             return ResolvedLinks({})
 
-        available_time = as_utc(task.available_time)
-        if task.confirmed_drama_match is None:
-            episode_count = self._tomato.get_episode_count(
-                task.drama_name, available_time
-            )
-        else:
-            episode_count = self._tomato.get_episode_count(
-                task.drama_name,
-                available_time,
-                task.confirmed_drama_match,
-            )
-        scan_kwargs = {"episode_count": episode_count}
-        if task.confirmed_drama_match is not None:
-            scan_kwargs["confirmed_match"] = task.confirmed_drama_match
-        scan = scan_iap(
-            task.drama_name,
-            available_time,
-            self._tomato,
-            self._price_rules,
-            **scan_kwargs,
+        acquisition = self._link_acquisition.acquire(task)
+        iap_failures = list(
+            acquisition.diagnostics.get("iap_failures") or []
         )
-        if scan.iap_failures:
+        iap_diag = dict(acquisition.diagnostics.get("iap_diag") or {})
+        if iap_failures:
             logger.warning(
                 "IAP 链接提取失败: task=%s drama=%s failures=%s",
                 task.id,
                 task.drama_name,
-                scan.iap_failures,
+                iap_failures,
             )
         else:
             logger.info(
-                "IAP 扫描结果: task=%s drama=%s business=%s iap_2_9=%s iap_9_9=%s",
+                "链接采集结果: task=%s drama=%s status=%s selected=%s",
                 task.id,
                 task.drama_name,
-                scan.business_result,
-                bool(scan.iap_2_9_link),
-                bool(scan.iap_9_9_link),
+                acquisition.status,
+                [asset.link_type for asset in acquisition.selected],
             )
-        links = {"IAA": scan.iaa_link.promotion_url}
-        if scan.iap_2_9_link and scan.iap_2_9_link.promotion_url:
-            links["2.9"] = scan.iap_2_9_link.promotion_url
-        if scan.iap_9_9_link and scan.iap_9_9_link.promotion_url:
-            links["9.9"] = scan.iap_9_9_link.promotion_url
+        links = self._link_acquisition.build_link_snapshot(acquisition)
         return ResolvedLinks(
-            {key: value for key, value in links.items() if value},
-            iap_failures=scan.iap_failures,
-            diag=scan.diag,
+            links,
+            iap_failures=iap_failures,
+            diag=iap_diag,
+            failure_code=_acquisition_failure_code(acquisition),
         )
 
     def _resolve_youxuan_links(self, task: DramaTask) -> ResolvedLinks:
@@ -269,9 +273,29 @@ def _resolved_link_status(links: dict[str, str]) -> str:
     for url in links.values():
         if _is_mock_url(url):
             continue
-        if not url.startswith("aweme://playlet?") or "advertise_param=" not in url:
-            return "SPECIAL_LENGTH"
+        if not _is_valid_aweme_url(url):
+            return "INVALID_URL"
     return "VALIDATED"
+
+
+def _is_valid_aweme_url(url: str) -> bool:
+    """校验 aweme:// 协议 URL 带查询参数。"""
+    if not url.startswith("aweme://"):
+        return False
+    if "?" not in url:
+        return False
+    query = url.split("?", 1)[1]
+    return "=" in query
+
+
+def _acquisition_failure_code(acquisition) -> str | None:
+    if acquisition.status == "AMBIGUOUS":
+        return "LINK_ASSET_AMBIGUOUS"
+    if acquisition.candidates and not acquisition.selected:
+        return "LINK_VALIDATION_FAILED"
+    if not acquisition.candidates:
+        return "LINK_ASSET_NOT_FOUND"
+    return None
 
 
 def _is_mock_url(url: str) -> bool:
