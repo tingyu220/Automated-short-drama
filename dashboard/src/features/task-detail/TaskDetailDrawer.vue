@@ -13,6 +13,7 @@ import {
 import {
   buildLinkReadinessStages,
   formatDateTime,
+  getLinkExtractionLabel,
   type TaskView,
   type WorkflowRunItem
 } from "@/entities/task/types"
@@ -49,7 +50,7 @@ watch(
 const stageLabel = computed(() => {
   const labels: Record<string, string> = {
     WAITING_AVAILABLE_TIME: "等待上线时间",
-    LINK_EXTRACTION: "链接提取中",
+    LINK_EXTRACTION: `${getLinkExtractionLabel(props.task?.platform)}中`,
     DELIVERY_DRAMA: "投放剧目搭建中",
     PROMOTION_CONFIG: "推广内容搭建中",
     LINK_EXTRACTED: "链接已提取",
@@ -199,7 +200,7 @@ function closeDrawer() {
           </dl>
           <section class="task-detail__outputs" aria-label="链接准备产物">
             <div>
-              <h4>番茄链接</h4>
+              <h4>{{ getLinkExtractionLabel(task.platform) }}</h4>
               <p v-if="linkEntries.length === 0" class="task-detail__muted">尚未提取</p>
               <ul v-else>
                 <li v-for="[key, value] in linkEntries" :key="key">

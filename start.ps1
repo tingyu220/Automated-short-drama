@@ -3,6 +3,8 @@
 # 双击 start.bat 即可运行此脚本
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = "utf-8"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $python = "C:\Users\tingyu\AppData\Local\Programs\Python\Python312\python.exe"
 $logDir = Join-Path $root "logs"

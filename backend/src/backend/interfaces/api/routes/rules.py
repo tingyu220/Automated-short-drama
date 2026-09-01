@@ -18,6 +18,7 @@ from backend.infrastructure.database.session import get_session
 from backend.interfaces.api.schemas import (
     MaterialRuleRangeView,
     RuleSetView,
+    RuleVersionDetailView,
     RuleVersionView,
     SimulationOutputView,
     SimulationResultView,
@@ -84,6 +85,16 @@ def list_rule_versions(rule_set_id: str, db: Session = Depends(get_db)):
     return [RuleVersionView.model_validate(version) for version in versions]
 
 
+@router.get("/rules/{rule_set_id}/versions/{version_id}", response_model=RuleVersionDetailView)
+def get_rule_version(
+    rule_set_id: str, version_id: str, db: Session = Depends(get_db)
+):
+    """获取指定版本详情（含 payload）。"""
+    rule_repo = _require_rule_set(db, rule_set_id)
+    version = rule_service.get_version(rule_repo, rule_set_id, version_id)
+    return RuleVersionDetailView.model_validate(version)
+
+
 @router.post("/rules/{rule_set_id}/validate", response_model=RuleVersionView)
 def validate_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
     """校验当前规则并创建 VALIDATING 版本。"""
@@ -123,6 +134,18 @@ def publish_rule_set(rule_set_id: str, db: Session = Depends(get_db)):
         price_repo, material_repo, version.payload_json
     )
     return RuleVersionView.model_validate(version)
+
+
+@router.delete("/rules/{rule_set_id}/versions/{version_id}")
+def delete_rule_version(
+    rule_set_id: str, version_id: str, db: Session = Depends(get_db)
+):
+    """删除指定版本（仅 DRAFT / VALIDATING 可删除）。"""
+    rule_repo = _require_rule_set(db, rule_set_id)
+    rule_service.delete_version(
+        rule_repo, rule_set_id, version_id, actor="dashboard"
+    )
+    return {"deleted": True}
 
 
 @router.post("/rules/simulate-price", response_model=SimulationResultView)

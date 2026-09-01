@@ -42,7 +42,7 @@ export const LINK_READINESS_STAGES: Omit<
   },
   {
     key: "LINK_EXTRACTION",
-    label: "提取番茄链接",
+    label: "提取链接",
     detail: "搜索、复用或创建链接"
   },
   {
@@ -66,10 +66,18 @@ const LINK_READINESS_STAGE_INDEX = new Map(
   LINK_READINESS_STAGES.map((stage, index) => [stage.key, index])
 )
 
+export function getLinkExtractionLabel(platform?: string | null): string {
+  const p = (platform ?? "").toUpperCase()
+  if (p === "TOMATO") return "提取番茄链接"
+  if (p === "JUBIAN") return "读取剧变链接"
+  return "提取链接"
+}
+
 export function buildLinkReadinessStages(
   currentStage?: string | null,
   taskStatus?: string | null,
-  steps: Array<Pick<LinkStageRun, "step_name" | "status">> = []
+  steps: Array<Pick<LinkStageRun, "step_name" | "status">> = [],
+  platform?: string | null
 ): LinkReadinessStageNode[] {
   const currentKey = currentStage?.toUpperCase() ?? ""
   const normalizedStatus = taskStatus?.toUpperCase() ?? ""
@@ -97,22 +105,26 @@ export function buildLinkReadinessStages(
     } else if (index === activeIndex && activeIndex >= 0) {
       status = "current"
     }
-    return { ...stage, status }
+    const label = stage.key === "LINK_EXTRACTION"
+      ? getLinkExtractionLabel(platform)
+      : stage.label
+    return { ...stage, label, status }
   })
 }
 
 export function getLinkReadinessStageLabel(
   currentStage?: string | null,
-  taskStatus?: string | null
+  taskStatus?: string | null,
+  platform?: string | null
 ): string {
   const normalizedStatus = taskStatus?.toUpperCase() ?? ""
   if (normalizedStatus === "LINK_EXTRACTED") return "链接已提取"
   if (normalizedStatus === "COMPLETED") return "链接已就绪"
   const normalizedStage = currentStage?.toUpperCase() ?? ""
-  return (
-    LINK_READINESS_STAGES.find((stage) => stage.key === normalizedStage)?.label ??
-    "未开始"
-  )
+  const stage = LINK_READINESS_STAGES.find((s) => s.key === normalizedStage)
+  if (!stage) return "未开始"
+  if (stage.key === "LINK_EXTRACTION") return getLinkExtractionLabel(platform)
+  return stage.label
 }
 
 export const WORKFLOW_STEPS: WorkflowStepNode[] = [

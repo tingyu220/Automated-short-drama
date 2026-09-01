@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 
 from backend.domain.errors.domain_error import DomainError
 from backend.interfaces.api.errors import to_http_error
@@ -21,8 +21,19 @@ from backend.interfaces.api.routes.records import router as records_router
 from backend.interfaces.api.routes.rules import router as rules_router
 from backend.interfaces.api.routes.runtime import router as runtime_router
 from backend.interfaces.api.routes.sessions import router as sessions_router
+from backend.interfaces.api.routes.miniprogram import router as miniprogram_router
 from backend.interfaces.api.routes.tasks import router as tasks_router
 from backend.interfaces.api.routes.worker import router as worker_router
+
+
+class SPAStaticFiles(StarletteStaticFiles):
+    """支持 SPA history 模式的静态文件服务；找不到文件时回退到 index.html。"""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except Exception:
+            return await super().get_response("index.html", scope)
 
 
 def create_app(dist_dir: Path | None = None) -> FastAPI:
@@ -49,6 +60,7 @@ def create_app(dist_dir: Path | None = None) -> FastAPI:
     app.include_router(runtime_router, prefix="/api")
     app.include_router(sessions_router, prefix="/api")
     app.include_router(worker_router, prefix="/api")
+    app.include_router(miniprogram_router, prefix="/api")
 
     # 生产环境自动检测 dashboard/dist；测试可传 dist_dir 覆盖
     _dist = dist_dir if dist_dir is not None else _resolve_default_dist_dir()
@@ -58,12 +70,16 @@ def create_app(dist_dir: Path | None = None) -> FastAPI:
 
 
 def mount_frontend(app: FastAPI, dist_dir: Path | None) -> None:
-    """如果 dist_dir 存在且为目录，挂载前端静态文件到 /。"""
+    """如果 dist_dir 存在且为目录，挂载前端静态文件到 /（支持 SPA history fallback）。"""
     if dist_dir is None:
         return
     if not dist_dir.is_dir():
         return
-    app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
+    app.mount(
+        "/",
+        SPAStaticFiles(directory=str(dist_dir), html=True),
+        name="frontend",
+    )
 
 
 def _resolve_default_dist_dir() -> Path | None:

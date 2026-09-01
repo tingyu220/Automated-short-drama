@@ -119,6 +119,19 @@ class SqlAlchemyRuleRepository:
         )
         return [self._to_rule_version(record) for record in records]
 
+    def get_rule_version(self, version_id: str) -> RuleVersion | None:
+        record = self._session.get(RuleVersionRecord, version_id)
+        return self._to_rule_version(record) if record else None
+
+    def delete_rule_version(self, version_id: str) -> bool:
+        """删除版本。"""
+        record = self._session.get(RuleVersionRecord, version_id)
+        if record is None:
+            return False
+        self._session.delete(record)
+        self._session.flush()
+        return True
+
     def append_change_log(self, log: ConfigChangeLog) -> ConfigChangeLog:
         record = ConfigChangeLogRecord(
             id=log.id,
@@ -222,6 +235,24 @@ class SqlAlchemyPriceRuleRepository:
             record.max_price = rule.max_price
             record.same_distance_strategy = rule.same_distance_strategy
             record.enabled = rule.enabled
+        self._session.flush()
+
+    def replace_template_price_rules(
+        self, rules: list[TemplatePriceRule]
+    ) -> None:
+        """整体替换价格规则（发布时以版本 payload 全量为准）。"""
+        self._session.query(TemplatePriceRuleRecord).delete()
+        for rule in rules:
+            record = TemplatePriceRuleRecord(
+                id=rule.id or str(uuid.uuid4()),
+                key=rule.key,
+                target_price=rule.target_price,
+                min_price=rule.min_price,
+                max_price=rule.max_price,
+                same_distance_strategy=rule.same_distance_strategy,
+                enabled=rule.enabled,
+            )
+            self._session.add(record)
         self._session.flush()
 
     @staticmethod

@@ -142,6 +142,18 @@ class RuleVersionView(BaseModel):
     published_at: datetime | None
 
 
+class RuleVersionDetailView(BaseModel):
+    """规则版本详情视图（含 payload）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version: str
+    status: str
+    published_at: datetime | None
+    payload_json: dict
+
+
 class SimulationOutputView(BaseModel):
     """单个价格候选的模拟结果。"""
 
@@ -332,3 +344,56 @@ class ImportedDramaRecordView(BaseModel):
     operator_name: str
     task_id: str | None
     task_status: str | None
+
+
+# ── MiniProgram ───────────────────────────────────────────
+
+
+class MiniProgramTaskView(BaseModel):
+    """MiniProgram 任务列表项。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: str
+    drama_name: str
+    operator_name: str
+    operator_code: str
+    organization_group: str
+    organization_path: str
+    drama_short_name: str | None = None
+    album_id: str | None = None
+    workflow_status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MiniProgramConfigView(BaseModel):
+    """MiniProgram 剧场配置视图。"""
+
+    config_name: str
+    mini_program: dict
+    promotion: dict
+    ocean: dict
+    price_tiers: dict
+
+
+class MiniProgramDiscoveryCaptureView(BaseModel):
+    """单条 Discovery 捕获记录视图。"""
+
+    url: str
+    method: str
+    status: int
+    endpoint_type: str
+    response_body: dict | list
+    captured_at: str
+
+
+class MiniProgramDiscoveryView(BaseModel):
+    """Discovery 结果视图。"""
+
+    task_id: str
+    capture_count: int
+    endpoint_counts: dict[str, int]
+    endpoint_types: list[str]
+    captures: list[MiniProgramDiscoveryCaptureView]
+    artifacts_path: str | None = None

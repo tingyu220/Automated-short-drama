@@ -125,7 +125,10 @@ def validate_rule(
     material_repo: MaterialRuleRepository,
     rule_set_id: str,
 ) -> RuleVersion:
-    """校验价格与素材区间规则，通过后创建 VALIDATING 版本."""
+    """校验草稿中的规则，通过后创建 VALIDATING 版本。
+
+    只校验草稿 payload 本身，不混入生效表的现有数据。
+    """
     rule_set = rule_repo.get_rule_set(rule_set_id)
     if rule_set is None:
         raise NotFoundError(f"规则集不存在: {rule_set_id}")
@@ -137,10 +140,6 @@ def validate_rule(
     latest_draft = max(drafts, key=_version_sort_key)
 
     errors = _validate_payload_draft(latest_draft.payload_json) or []
-    errors.extend(_validate_price_rules(price_repo.list_template_price_rules()))
-    errors.extend(
-        _validate_material_rules(material_repo.list_material_rule_ranges())
-    )
     if errors:
         raise ValidationError("规则校验失败", details={"errors": errors})
 
@@ -289,9 +288,9 @@ def apply_published_payload(
         "template_price_rules"
     )
     if isinstance(price_items, list):
-        _upsert_price_items(price_repo, price_items)
+        _replace_price_items(price_repo, price_items)
     elif _looks_like_price_item(payload):
-        _upsert_price_items(price_repo, [payload])
+        _replace_price_items(price_repo, [payload])
 
     ranges = payload.get("ranges") or payload.get("material_ranges")
     if isinstance(ranges, list):
@@ -341,18 +340,19 @@ def _looks_like_price_item(payload: dict[str, Any]) -> bool:
     )
 
 
-def _upsert_price_items(
+def _replace_price_items(
     price_repo: PriceRuleRepository,
     items: list[dict[str, Any]],
 ) -> None:
-    """按草稿项覆盖价格规则表。"""
+    """按草稿全量替换价格规则表（发布时以版本 payload 为准）。"""
+    rules: list[TemplatePriceRule] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         key = str(_pick(item, "key", "id") or "")
         if not key:
             continue
-        price_repo.upsert_template_price_rule(
+        rules.append(
             TemplatePriceRule(
                 key=key,
                 target_price=float(
@@ -377,6 +377,7 @@ def _upsert_price_items(
                 ),
             )
         )
+    price_repo.replace_template_price_rules(rules)
 
 
 def publish_version(
@@ -426,6 +427,50 @@ def list_versions(
     """按创建时间倒序列出版本."""
     versions = rule_repo.list_rule_versions(rule_set_id)
     return sorted(versions, key=_version_sort_key, reverse=True)
+
+
+def get_version(
+    rule_repo: RuleRepository,
+    rule_set_id: str,
+    version_id: str,
+) -> RuleVersion:
+    """获取指定版本详情."""
+    rule_set = rule_repo.get_rule_set(rule_set_id)
+    if rule_set is None:
+        raise NotFoundError(f"规则集不存在: {rule_set_id}")
+    version = rule_repo.get_rule_version(version_id)
+    if version is None or version.rule_set_id != rule_set_id:
+        raise NotFoundError(f"版本不存在: {version_id}")
+    return version
+
+
+def delete_version(
+    rule_repo: RuleRepository,
+    rule_set_id: str,
+    version_id: str,
+    actor: str = "system",
+) -> bool:
+    """删除版本。"""
+    rule_set = rule_repo.get_rule_set(rule_set_id)
+    if rule_set is None:
+        raise NotFoundError(f"规则集不存在: {rule_set_id}")
+
+    version = rule_repo.get_rule_version(version_id)
+    if version is None or version.rule_set_id != rule_set_id:
+        raise NotFoundError(f"版本不存在: {version_id}")
+
+    rule_repo.delete_rule_version(version_id)
+
+    log = ConfigChangeLog(
+        id=str(uuid.uuid4()),
+        rule_set_id=rule_set_id,
+        action="DELETE_VERSION",
+        actor=actor,
+        from_version=version.version,
+        to_version=None,
+    )
+    rule_repo.append_change_log(log)
+    return True
 
 
 def create_config_snapshot(

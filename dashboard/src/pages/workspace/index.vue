@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
-import { useRouter } from "vue-router"
+import { computed, onMounted, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { ElButton, ElDrawer, ElMessage, ElTag } from "element-plus"
 import { Refresh } from "@element-plus/icons-vue"
 import CurrentTaskPanel from "@/widgets/current-task/CurrentTaskPanel.vue"
 import TaskDetailDrawer from "@/features/task-detail/TaskDetailDrawer.vue"
 import EmptyState from "@/shared/ui/EmptyState.vue"
+import ErrorState from "@/shared/ui/ErrorState.vue"
+import LoadingSkeleton from "@/shared/ui/LoadingSkeleton.vue"
 import StatusDot from "@/shared/ui/StatusDot.vue"
+import { useMiniprogramStore } from "@/app/stores/miniprogram"
 import { getPlatformLabel, getStatusColor, getStatusLabel } from "@/shared/utils/status"
 import { useExceptionStore } from "@/app/stores/exception"
 import { useQueueStore } from "@/app/stores/queue"
@@ -27,7 +30,41 @@ const queueStore = useQueueStore()
 const exceptionStore = useExceptionStore()
 const systemStore = useSystemStore()
 const sessionStore = useSessionStore()
+const miniprogramStore = useMiniprogramStore()
+const route = useRoute()
 const router = useRouter()
+
+type ProductionLine = "A" | "B"
+const activeTab = ref<ProductionLine>(
+  (route.query.tab as ProductionLine) || "B"
+)
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tab === "A" || tab === "B") {
+      activeTab.value = tab
+    }
+  }
+)
+
+watch(activeTab, (tab) => {
+  if (tab === "A") {
+    miniprogramStore.fetchTasks()
+    miniprogramStore.fetchConfigs()
+  }
+})
+
+async function handleSync() {
+  const ok = await miniprogramStore.syncTasks()
+  if (ok && miniprogramStore.syncResult) {
+    const r = miniprogramStore.syncResult
+    ElMessage.success(`同步完成: 新增 ${r.created} 更新 ${r.updated} 跳过 ${r.skipped}`)
+  } else {
+    ElMessage.error("同步失败，请检查后端和飞书连接")
+  }
+}
+
 const checkingPlatform = ref<string | null>(null)
 const importingPlatform = ref<string | null>(null)
 const checkNotices = ref<Record<string, string>>({})
@@ -184,6 +221,23 @@ async function openOverviewDetail(taskId: string) {
   }
 }
 
+async function runTaskToTarget(targetStage: string) {
+  const task = currentDetail.value ?? overviewDetailTask.value
+  if (!task) return
+  await taskStore.enqueueTask(task.id, targetStage)
+  if (taskStore.error) {
+    ElMessage.error(taskStore.error)
+    return
+  }
+  ElMessage.success(
+    targetStage === "LINK_EXTRACTION" ? "已安排提取链接" : "已安排搭建链接"
+  )
+  await load()
+  if (taskStore.detail?.id === task.id) {
+    await taskStore.fetchTask(task.id)
+  }
+}
+
 const upcomingTasks = computed(() =>
   [...taskStore.tasks]
     .filter(
@@ -313,6 +367,18 @@ const resourceStatuses = computed(() => {
     platformStatus("ocean", "巨量")
   ]
 })
+
+function miniprogramStatusMeta(status: string): { label: string; color: string } {
+  const map: Record<string, { label: string; color: string }> = {
+    NOT_STARTED: { label: "未开始", color: "var(--color-status-pending)" },
+    CONTEXT_READY: { label: "上下文就绪", color: "var(--color-status-running)" },
+    DISCOVERY_READY: { label: "发现就绪", color: "var(--color-status-running)" },
+    READY_FOR_IMPLEMENTATION: { label: "待实施", color: "var(--color-status-success)" },
+    MANUAL_REVIEW: { label: "人工审核", color: "var(--color-status-error)" },
+    FAILED: { label: "失败", color: "var(--color-status-error)" },
+  }
+  return map[status] ?? { label: status, color: "var(--color-status-pending)" }
+}
 </script>
 
 <template>
@@ -328,6 +394,164 @@ const resourceStatuses = computed(() => {
       </ElButton>
     </header>
 
+    <!-- 产线 Tab 切换 -->
+    <div class="workspace__tabs">
+      <button
+        v-for="tab in [
+          { key: 'A', label: 'A产线·小程序' },
+          { key: 'B', label: 'B产线·端原生' }
+        ]"
+        :key="tab.key"
+        class="workspace__tab"
+        :class="{ active: activeTab === tab.key }"
+        @click="activeTab = tab.key as ProductionLine"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- A产线·小程序 -->
+    <div v-if="activeTab === 'A'" class="workspace__miniprogram">
+      <!-- 小程序剧目表 -->
+      <section class="miniprogram-section">
+        <div class="miniprogram-section__header">
+          <h3 class="miniprogram-section__title">小程序剧目</h3>
+          <div class="miniprogram-section__actions">
+            <ElButton size="small" :loading="miniprogramStore.syncing" @click="handleSync">从飞书同步</ElButton>
+            <ElButton size="small" :loading="miniprogramStore.tasksLoading" @click="miniprogramStore.fetchTasks()">刷新</ElButton>
+          </div>
+        </div>
+        <ErrorState
+          v-if="miniprogramStore.tasksError"
+          :message="miniprogramStore.tasksError"
+          retry-text="重试"
+          @retry="miniprogramStore.fetchTasks()"
+        />
+        <LoadingSkeleton v-else-if="miniprogramStore.tasksLoading && miniprogramStore.tasks.length === 0" :rows="4" />
+        <EmptyState
+          v-else-if="miniprogramStore.tasks.length === 0"
+          title="暂无小程序剧目"
+          description="后端启动后从飞书剧目表同步"
+        />
+        <div v-else class="mp-drama-list">
+          <div
+            v-for="task in miniprogramStore.tasks"
+            :key="task.task_id"
+            class="mp-drama-card"
+          >
+            <div class="mp-drama-card__header">
+              <div class="mp-drama-card__title">
+                <span class="mp-drama-card__name">{{ task.drama_name }}</span>
+                <ElTag size="small" type="info">{{ task.operator_name }}</ElTag>
+                <ElTag size="small" type="info">{{ task.organization_group }}</ElTag>
+              </div>
+              <ElTag
+                size="small"
+                :type="task.workflow_status === 'READY_FOR_IMPLEMENTATION' ? 'success' : task.workflow_status === 'FAILED' ? 'danger' : 'warning'"
+              >
+                {{ miniprogramStatusMeta(task.workflow_status).label }}
+              </ElTag>
+            </div>
+
+            <!-- 工作流步骤 -->
+            <div class="mp-steps">
+              <div class="mp-step" :class="{ done: task.album_id }">
+                <span class="mp-step__icon">{{ task.album_id ? '✓' : '○' }}</span>
+                <span class="mp-step__label">专辑ID</span>
+                <span class="mp-step__value">{{ task.album_id || '待获取' }}</span>
+              </div>
+              <div class="mp-step__arrow">→</div>
+              <div class="mp-step" :class="{ done: task.drama_short_name }">
+                <span class="mp-step__icon">{{ task.drama_short_name ? '✓' : '○' }}</span>
+                <span class="mp-step__label">剧名缩写</span>
+                <span class="mp-step__value">{{ task.drama_short_name || '待确认' }}</span>
+              </div>
+              <div class="mp-step__arrow">→</div>
+              <div class="mp-step">
+                <span class="mp-step__icon">○</span>
+                <span class="mp-step__label">推广链接</span>
+                <span class="mp-step__value">2.9 / 9.9</span>
+              </div>
+              <div class="mp-step__arrow">→</div>
+              <div class="mp-step">
+                <span class="mp-step__icon">○</span>
+                <span class="mp-step__label">商品创建</span>
+                <span class="mp-step__value">2.9 / 9.9</span>
+              </div>
+              <div class="mp-step__arrow">→</div>
+              <div class="mp-step">
+                <span class="mp-step__icon">○</span>
+                <span class="mp-step__label">小程序资产</span>
+                <span class="mp-step__value">2.9 / 9.9</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 固定配置 -->
+      <section class="miniprogram-section">
+        <h3 class="miniprogram-section__title">剧场配置</h3>
+        <ErrorState
+          v-if="miniprogramStore.configsError"
+          :message="miniprogramStore.configsError"
+          retry-text="重试"
+          @retry="miniprogramStore.fetchConfigs()"
+        />
+        <LoadingSkeleton v-else-if="miniprogramStore.configsLoading && miniprogramStore.configs.length === 0" :rows="2" />
+        <EmptyState
+          v-else-if="miniprogramStore.configs.length === 0"
+          title="暂无配置"
+          description="在 backend/miniprogram/configs/ 下添加 YAML"
+        />
+        <div v-else class="miniprogram-configs">
+          <div
+            v-for="cfg in miniprogramStore.configs"
+            :key="cfg.config_name"
+            class="miniprogram-config-card"
+          >
+            <div class="miniprogram-config-card__header">
+              <span class="miniprogram-config-card__name">{{ cfg.mini_program.name }}</span>
+              <ElTag size="small">{{ cfg.config_name }}</ElTag>
+            </div>
+            <div class="miniprogram-config-card__body">
+              <div class="miniprogram-config-row">
+                <span class="miniprogram-config-label">AppID</span>
+                <code>{{ cfg.mini_program.app_id }}</code>
+              </div>
+              <div class="miniprogram-config-row">
+                <span class="miniprogram-config-label">原始ID</span>
+                <code>{{ cfg.mini_program.original_id }}</code>
+              </div>
+              <div class="miniprogram-config-row">
+                <span class="miniprogram-config-label">主体</span>
+                <span>{{ cfg.ocean?.subject || '—' }}</span>
+              </div>
+              <div class="miniprogram-config-row">
+                <span class="miniprogram-config-label">收费类型</span>
+                <span>{{ cfg.promotion.charge_type }}</span>
+              </div>
+              <div class="miniprogram-config-row">
+                <span class="miniprogram-config-label">价格档位</span>
+                <div class="miniprogram-config-tiers">
+                  <ElTag
+                    v-for="(tierCfg, tier) in cfg.price_tiers"
+                    :key="tier"
+                    size="small"
+                    type="success"
+                  >
+                    {{ tier }} — {{ tierCfg.product_library }}
+                  </ElTag>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- A/B 产线内容 -->
+    <template v-else>
     <div class="workspace__current">
         <CurrentTaskPanel
           :task="current.task"
@@ -544,9 +768,12 @@ const resourceStatuses = computed(() => {
       </aside>
     </div>
 
+    </template>
+
     <TaskDetailDrawer
       :open="detailOpen"
       :task="currentDetail"
+      @run="runTaskToTarget"
       @update:open="detailOpen = $event"
     />
 
@@ -591,6 +818,7 @@ const resourceStatuses = computed(() => {
     <TaskDetailDrawer
       :open="overviewDetailOpen"
       :task="overviewDetailTask"
+      @run="runTaskToTarget"
       @update:open="overviewDetailOpen = $event"
     />
   </div>
@@ -601,6 +829,219 @@ const resourceStatuses = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.workspace__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-light, #e5e7eb);
+  padding-bottom: 0;
+}
+
+.workspace__tab {
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.workspace__tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-muted, #f8fafc);
+  border-radius: 6px 6px 0 0;
+}
+
+.workspace__tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.workspace__miniprogram {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.miniprogram-section {
+  margin-bottom: 8px;
+}
+
+.miniprogram-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.miniprogram-section__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.miniprogram-section__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.miniprogram-status-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-left: 6px;
+}
+
+.miniprogram-configs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.miniprogram-config-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--color-border-light, #e5e7eb);
+  padding: 20px;
+}
+
+.miniprogram-config-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.miniprogram-config-card__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.miniprogram-config-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.miniprogram-config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.miniprogram-config-label {
+  color: var(--color-text-tertiary);
+  min-width: 80px;
+}
+
+.miniprogram-config-row code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-muted, #f8fafc);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.mp-drama-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-drama-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light, #e5e7eb);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.mp-drama-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.mp-drama-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-drama-card__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.mp-steps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mp-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--color-bg-muted, #f8fafc);
+  font-size: 13px;
+}
+
+.mp-step.done {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.mp-step__icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+
+.mp-step.done .mp-step__icon {
+  background: #22c55e;
+  color: white;
+}
+
+.mp-step__label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mp-step__value {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mp-step.done .mp-step__value {
+  color: #16a34a;
+}
+
+.mp-step__arrow {
+  color: #d1d5db;
+  font-size: 14px;
+  margin: 0 2px;
 }
 
 .workspace__header {

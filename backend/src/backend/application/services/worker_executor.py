@@ -65,6 +65,9 @@ from backend.infrastructure.database.repositories.account_usage_repository impor
 from backend.infrastructure.database.repositories.task_repository import (
     SqlAlchemyTaskRepository,
 )
+from backend.infrastructure.database.repositories.promotion_asset_repository import (
+    SqlAlchemyPromotionAssetRepository,
+)
 from backend.infrastructure.database.repositories.workflow_repository import (
     SqlAlchemyWorkflowRepository,
 )
@@ -136,6 +139,7 @@ def build_link_readiness_executor(
         queue_repo,
         price_rules=price_rules,
         youxuan=bundle.youxuan,
+        promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
     )
     readiness = LinkReadinessService(
         preparation,
@@ -256,6 +260,7 @@ def build_worker_executor(
         SqlAlchemyQueueRepository(session),
         price_rules=price_rules,
         youxuan=bundle.youxuan,
+        promotion_asset_repo=SqlAlchemyPromotionAssetRepository(session),
     )
     # 安全默认 False；Mock 验收测试需显式传 True 模拟完整提交链路（与 CLI Mock 模式一致）。
     delivery = StandardDeliveryService(

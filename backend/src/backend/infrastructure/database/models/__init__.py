@@ -21,6 +21,9 @@ from backend.infrastructure.database.models.worker import WorkerLeaseRecord  # n
 from backend.infrastructure.database.models.runtime_environment import (  # noqa: F401
     RuntimeEnvironmentRecord,
 )
+from backend.infrastructure.database.models.promotion_asset import (  # noqa: F401
+    PromotionAssetRecord,
+)
 from backend.infrastructure.database.models.task import (  # noqa: F401
     DramaTaskRecord,
     QueueItemRecord,

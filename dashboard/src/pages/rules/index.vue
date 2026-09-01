@@ -182,6 +182,16 @@ async function onPublish(ruleSetId: string) {
   syncPriceRulesFromStore()
 }
 
+async function onDeleteVersion(ruleSetId: string, versionId: string) {
+  const success = await ruleStore.deleteVersion(ruleSetId, versionId)
+  if (ruleStore.error || !success) {
+    ElMessage.error(ruleStore.error ?? "删除失败")
+    return
+  }
+  ElMessage.success("版本已删除")
+  await loadVersions()
+}
+
 async function onSaveMapping(rows: MappingRow[]) {
   const result = await deliveryConfigStore.saveMappingProposal(rows)
   if (deliveryConfigStore.error || !result) {
@@ -283,6 +293,7 @@ async function onSaveSettings(
           :busy="ruleStore.loading"
           @validate="onValidate"
           @publish="onPublish"
+          @delete="onDeleteVersion"
           @retry="loadVersions"
         />
       </div>
